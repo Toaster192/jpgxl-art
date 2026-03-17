@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArtXL</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #111; color: #eee; padding: 1rem; }
+    h1 { font-size: 1.4rem; margin-bottom: 1rem; color: #fff; }
+    h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: #1e1e1e;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #333;
+    }
+    .card canvas { display: block; width: 100%; }
+    .card .info { padding: 0.5rem 0.75rem; }
+    .card .label { font-size: 0.85rem; color: #ccc; }
+    .card .original-badge {
+      font-size: 0.7rem;
+      background: #444;
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-left: 0.4rem;
+    }
+    pre#program {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      padding: 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      white-space: pre;
+      color: #9cdcfe;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    #status { color: #888; margin: 0.5rem 0 1rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>ArtXL — tree-based image mutation</h1>
+  <p id="status">Loading…</p>
+
+  <h2>Program (original)</h2>
+  <pre id="program"></pre>
+
+  <h2>Rendered images</h2>
+  <div id="gallery"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
