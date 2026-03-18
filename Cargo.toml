@@ -9,9 +9,7 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# JXL encode/decode — requires libjxl system library (pacman -S libjxl)
-jpegxl-rs = "0.10"
 image = "0.25"
 base64 = { version = "0.22", features = ["std"] }
 rand = "0.8"
-anyhow = "1"
+futures = "0.3"

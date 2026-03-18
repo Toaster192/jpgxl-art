@@ -30,30 +30,231 @@
       border-radius: 3px;
       margin-left: 0.4rem;
     }
-    pre#program {
+    #editor-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    textarea#program {
       background: #1e1e1e;
       border: 1px solid #333;
       padding: 1rem;
       border-radius: 6px;
+      font-family: monospace;
       font-size: 0.8rem;
-      overflow-x: auto;
-      white-space: pre;
       color: #9cdcfe;
-      max-height: 300px;
-      overflow-y: auto;
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      outline: none;
     }
+    textarea#program:focus { border-color: #555; }
+    .render-btn {
+      align-self: flex-start;
+      padding: 0.4rem 1rem;
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #eee;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+    .render-btn:hover { background: #333; }
+    .render-btn:disabled { opacity: 0.5; cursor: default; }
+    #random-btn, #random20-btn {
+      padding: 0.4rem 1rem;
+      background: #1a2a1a;
+      border: 1px solid #4a7a4a;
+      border-radius: 4px;
+      color: #8ec98e;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+    #random-btn:hover, #random20-btn:hover { background: #1f321f; }
+    #random-btn:disabled, #random20-btn:disabled { opacity: 0.5; cursor: default; }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .btn-group {
+      display: flex;
+      align-items: stretch;
+      align-self: flex-start;
+    }
+    .btn-group > button:first-child {
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .preview-btn {
+      padding: 0.4rem 0.6rem;
+      background: #111;
+      border: 1px solid #444;
+      border-left: none;
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+      color: #666;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.75rem;
+    }
+    .preview-btn:hover { background: #1a1a1a; color: #aaa; }
+    .preview-btn:disabled { opacity: 0.4; cursor: default; }
+    #error-msg { color: #e06c75; font-size: 0.8rem; }
     #status { color: #888; margin: 0.5rem 0 1rem; font-size: 0.85rem; }
+    .dl-btn {
+      padding: 2px 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.72rem;
+    }
+    .dl-btn:hover { background: #2a2a2a; color: #eee; }
+    .dl-btn:disabled { opacity: 0.4; cursor: default; }
+    /* ── Comparison bar ──────────────────────────────────────────────────── */
+    #compare-bar {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #0e0e0e;
+      border-top: 1px solid #3a3a3a;
+      z-index: 200;
+    }
+    #compare-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      color: #888;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    #compare-header span { letter-spacing: 0.05em; }
+    #compare-clear {
+      background: none; border: none; color: #666;
+      cursor: pointer; font-size: 0.75rem; font-family: monospace;
+      padding: 2px 6px;
+    }
+    #compare-clear:hover { color: #e06c75; }
+    #compare-images {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      overflow-x: auto;
+      max-height: 45vh;
+    }
+    .cmp-item {
+      flex-shrink: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cmp-item canvas {
+      display: block;
+      max-height: calc(45vh - 40px);
+      width: auto;
+      cursor: pointer;
+      border: 1px solid #333;
+      border-radius: 3px;
+    }
+    .cmp-item canvas:hover { border-color: #e06c75; }
+    .cmp-label {
+      font-size: 0.7rem; color: #aaa;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cmp-remove {
+      background: none; border: none; color: #555;
+      cursor: pointer; font-size: 0.75rem; font-family: monospace; padding: 0 2px;
+    }
+    .cmp-remove:hover { color: #e06c75; }
+    /* section headers inside the gallery grid */
+    .gallery-section-header {
+      grid-column: 1 / -1;
+      font-size: 0.9rem;
+      color: #888;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #2a2a2a;
+      padding-bottom: 4px;
+      margin-top: 0.75rem;
+    }
+    /* cursor on gallery canvases */
+    .card canvas { cursor: zoom-in; }
+    .card canvas.pinned { outline: 2px solid #4ec9b0; outline-offset: -2px; }
+    /* zoom modal */
+    #zoom-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    #zoom-modal.open { display: flex; }
+    #zoom-modal canvas {
+      max-width: 92vw;
+      max-height: 92vh;
+      image-rendering: pixelated;
+      border-radius: 4px;
+      box-shadow: 0 0 40px rgba(0,0,0,0.8);
+      cursor: zoom-out;
+    }
   </style>
 </head>
 <body>
   <h1>ArtXL — tree-based image mutation</h1>
   <p id="status">Loading…</p>
 
-  <h2>Program (original)</h2>
-  <pre id="program"></pre>
+  <h2>Program</h2>
+  <div id="editor-wrap">
+    <textarea id="program" spellcheck="false"></textarea>
+    <div class="btn-row">
+      <div class="btn-group">
+        <button id="render-single-btn" class="render-btn">Render</button>
+        <button id="render-single-preview-btn" class="preview-btn">320px</button>
+      </div>
+      <div class="btn-group">
+        <button id="render-btn" class="render-btn">Render + mutations</button>
+        <button id="render-preview-btn" class="preview-btn">320px</button>
+      </div>
+      <div class="btn-group">
+        <button id="render-compound-btn" class="render-btn">Render + 20 compound</button>
+        <button id="render-compound-preview-btn" class="preview-btn">320px</button>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button id="random-btn">Randomize</button>
+      <button id="random-preview-btn" class="preview-btn">320px</button>
+    </div>
+    <div class="btn-group">
+      <button id="random20-btn">Randomize 20</button>
+      <button id="random20-preview-btn" class="preview-btn">320px</button>
+    </div>
+    <div id="error-msg"></div>
+  </div>
 
   <h2>Rendered images</h2>
   <div id="gallery"></div>
+
+  <!-- Comparison bar (fixed, bottom of viewport) -->
+  <div id="compare-bar">
+    <div id="compare-header">
+      <span>Comparison — click an image to pin/unpin</span>
+      <button id="compare-clear">✕ clear all</button>
+    </div>
+    <div id="compare-images"></div>
+  </div>
+
+  <!-- Zoom modal -->
+  <div id="zoom-modal"><canvas id="zoom-canvas"></canvas></div>
 
   <script src="app.js"></script>
 </body>
