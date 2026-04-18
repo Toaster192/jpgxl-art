@@ -559,18 +559,18 @@ impl ImageProgram {
         self.apply_orientation(pixels, self.width, self.height)
     }
 
-    /// Render a downscaled preview suitable for gallery thumbnails.
+    /// Render with the longest edge scaled to `max_dim` pixels.
     /// Tree conditions are evaluated in the native coordinate space so
     /// absolute thresholds (e.g. `x > 500`) split at the same relative
-    /// position.  Returns `(pixels, display_width, display_height)`.
-    pub fn render_display_preview(&self) -> (Vec<u8>, u32, u32) {
-        const MAX_PREVIEW: u32 = 320;
+    /// position regardless of output size.
+    /// Falls through to `render_display` when `max_dim` matches the native size.
+    pub fn render_display_at(&self, max_dim: u32) -> (Vec<u8>, u32, u32) {
         let src_max = self.width.max(self.height);
-        if src_max <= MAX_PREVIEW {
+        let out_w = ((self.width  as u64 * max_dim as u64 / src_max as u64) as u32).max(1);
+        let out_h = ((self.height as u64 * max_dim as u64 / src_max as u64) as u32).max(1);
+        if out_w == self.width && out_h == self.height {
             return self.render_display();
         }
-        let out_w = (self.width  * MAX_PREVIEW / src_max).max(1);
-        let out_h = (self.height * MAX_PREVIEW / src_max).max(1);
         let pixels = self.render_rgba_at(out_w, out_h);
         self.apply_orientation(pixels, out_w, out_h)
     }

@@ -1,16 +1,21 @@
 const statusEl    = document.getElementById('status');
 const gallery     = document.getElementById('gallery');
 const programEl   = document.getElementById('program');
-const renderSingleBtn        = document.getElementById('render-single-btn');
-const renderSinglePreviewBtn = document.getElementById('render-single-preview-btn');
-const renderBtn              = document.getElementById('render-btn');
-const renderPreviewBtn       = document.getElementById('render-preview-btn');
-const renderCompoundBtn      = document.getElementById('render-compound-btn');
+const renderSingleBtn         = document.getElementById('render-single-btn');
+const renderSinglePreviewBtn  = document.getElementById('render-single-preview-btn');
+const renderSingleLargeBtn    = document.getElementById('render-single-large-btn');
+const renderBtn               = document.getElementById('render-btn');
+const renderPreviewBtn        = document.getElementById('render-preview-btn');
+const renderLargeBtn          = document.getElementById('render-large-btn');
+const renderCompoundBtn       = document.getElementById('render-compound-btn');
 const renderCompoundPreviewBtn = document.getElementById('render-compound-preview-btn');
+const renderCompoundLargeBtn  = document.getElementById('render-compound-large-btn');
 const randomBtn          = document.getElementById('random-btn');
 const randomPreviewBtn   = document.getElementById('random-preview-btn');
+const randomLargeBtn     = document.getElementById('random-large-btn');
 const random20Btn        = document.getElementById('random20-btn');
 const random20PreviewBtn = document.getElementById('random20-preview-btn');
+const random20LargeBtn   = document.getElementById('random20-large-btn');
 const errorMsg    = document.getElementById('error-msg');
 const compareBar  = document.getElementById('compare-bar');
 const compareImgs = document.getElementById('compare-images');
@@ -102,12 +107,12 @@ function syncBarPadding() {
 
 // ── Streaming fetch ───────────────────────────────────────────────────────────
 
-async function streamFrom(url, method, body, preview = false) {
-  const fullUrl = preview ? url + (url.includes('?') ? '&' : '?') + 'preview=true' : url;
+async function streamFrom(url, method, body, size = 0) {
+  const fullUrl = size ? url + (url.includes('?') ? '&' : '?') + `size=${size}` : url;
   const opts = { method };
   if (body) {
     opts.headers = { 'Content-Type': 'application/json' };
-    opts.body = JSON.stringify(preview ? { ...body, preview: true } : body);
+    opts.body = JSON.stringify(size ? { ...body, size } : body);
   }
   const res = await fetch(fullUrl, opts);
   if (!res.ok) {
@@ -174,18 +179,18 @@ async function main() {
   errorMsg.textContent = '';
   statusEl.textContent = 'Generating…';
   try {
-    await streamFrom('/api/generate', 'GET', null, false);
+    await streamFrom('/api/generate', 'GET', null, 0);
   } catch (e) {
     statusEl.textContent = `Error: ${e.message}`;
   }
 }
 
 const allBtns = [
-  renderSingleBtn, renderSinglePreviewBtn,
-  renderBtn, renderPreviewBtn,
-  renderCompoundBtn, renderCompoundPreviewBtn,
-  randomBtn, randomPreviewBtn,
-  random20Btn, random20PreviewBtn,
+  renderSingleBtn, renderSinglePreviewBtn, renderSingleLargeBtn,
+  renderBtn, renderPreviewBtn, renderLargeBtn,
+  renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
+  randomBtn, randomPreviewBtn, randomLargeBtn,
+  random20Btn, random20PreviewBtn, random20LargeBtn,
 ];
 
 function withBusy(btn, label, fn) {
@@ -199,45 +204,26 @@ function withBusy(btn, label, fn) {
       .finally(() => { allBtns.forEach(b => b.disabled = false); btn.textContent = orig; });
 }
 
-random20Btn.addEventListener('click', () =>
-  withBusy(random20Btn, 'Generating…', () =>
-    streamFrom('/api/random/batch', 'GET', null, false)));
+function bindSizes(btn, previewBtn, largeBtn, busy, url, method, body) {
+  btn.addEventListener('click',        () => withBusy(btn,        busy, () => streamFrom(url, method, body(), 0)));
+  previewBtn.addEventListener('click', () => withBusy(previewBtn, '…', () => streamFrom(url, method, body(), 320)));
+  largeBtn.addEventListener('click',   () => withBusy(largeBtn,   '…', () => streamFrom(url, method, body(), 2048)));
+}
 
-random20PreviewBtn.addEventListener('click', () =>
-  withBusy(random20PreviewBtn, '…', () =>
-    streamFrom('/api/random/batch', 'GET', null, true)));
+bindSizes(random20Btn, random20PreviewBtn, random20LargeBtn,
+  'Generating…', '/api/random/batch', 'GET', () => null);
 
-randomBtn.addEventListener('click', () =>
-  withBusy(randomBtn, 'Randomizing…', () =>
-    streamFrom('/api/random', 'GET', null, false)));
+bindSizes(randomBtn, randomPreviewBtn, randomLargeBtn,
+  'Randomizing…', '/api/random', 'GET', () => null);
 
-randomPreviewBtn.addEventListener('click', () =>
-  withBusy(randomPreviewBtn, '…', () =>
-    streamFrom('/api/random', 'GET', null, true)));
+bindSizes(renderSingleBtn, renderSinglePreviewBtn, renderSingleLargeBtn,
+  'Rendering…', '/api/render', 'POST', () => ({ program_text: programEl.value, mode: 'single' }));
 
-renderSingleBtn.addEventListener('click', () =>
-  withBusy(renderSingleBtn, 'Rendering…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'single' }, false)));
+bindSizes(renderBtn, renderPreviewBtn, renderLargeBtn,
+  'Rendering…', '/api/render', 'POST', () => ({ program_text: programEl.value, mode: 'mutations' }));
 
-renderSinglePreviewBtn.addEventListener('click', () =>
-  withBusy(renderSinglePreviewBtn, '…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'single' }, true)));
-
-renderBtn.addEventListener('click', () =>
-  withBusy(renderBtn, 'Rendering…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'mutations' }, false)));
-
-renderPreviewBtn.addEventListener('click', () =>
-  withBusy(renderPreviewBtn, '…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'mutations' }, true)));
-
-renderCompoundBtn.addEventListener('click', () =>
-  withBusy(renderCompoundBtn, 'Rendering…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'compound20' }, false)));
-
-renderCompoundPreviewBtn.addEventListener('click', () =>
-  withBusy(renderCompoundPreviewBtn, '…', () =>
-    streamFrom('/api/render', 'POST', { program_text: programEl.value, mode: 'compound20' }, true)));
+bindSizes(renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
+  'Rendering…', '/api/render', 'POST', () => ({ program_text: programEl.value, mode: 'compound20' }));
 
 // ── Card rendering ────────────────────────────────────────────────────────────
 

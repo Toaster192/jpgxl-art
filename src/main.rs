@@ -58,31 +58,33 @@ enum RenderMode {
 #[derive(Deserialize)]
 struct RenderRequest {
     program_text: String,
+    /// 0 = native resolution, any other value = render at that max dimension.
     #[serde(default)]
-    preview: bool,
+    size: u32,
     #[serde(default)]
     mode: RenderMode,
 }
 
 #[derive(Deserialize, Default)]
-struct PreviewQuery {
+struct SizeQuery {
+    /// 0 = native resolution, any other value = render at that max dimension.
     #[serde(default)]
-    preview: bool,
+    size: u32,
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-async fn generate(Query(q): Query<PreviewQuery>) -> Response {
-    stream_response(ImageProgram::example_jxlart(), q.preview, vec![])
+async fn generate(Query(q): Query<SizeQuery>) -> Response {
+    stream_response(ImageProgram::example_jxlart(), q.size, vec![])
 }
 
-async fn randomize(Query(q): Query<PreviewQuery>) -> Response {
-    stream_response(random_program(), q.preview, Mutation::showcase())
+async fn randomize(Query(q): Query<SizeQuery>) -> Response {
+    stream_response(random_program(), q.size, Mutation::showcase())
 }
 
-async fn random_batch(Query(q): Query<PreviewQuery>) -> Response {
+async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
     const COUNT: usize = 20;
-    let preview = q.preview;
+    let size = q.size;
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
@@ -91,11 +93,7 @@ async fn random_batch(Query(q): Query<PreviewQuery>) -> Response {
                 tokio::task::spawn_blocking(move || {
                     let prog = random_program();
                     let program_text = prog.to_text();
-                    let (rgba, w, h) = if preview {
-                        prog.render_display_preview()
-                    } else {
-                        prog.render_display()
-                    };
+                    let (rgba, w, h) = render_at_size(&prog, size);
                     let image = to_payload(&rgba, w, h, &program_text);
                     (i, program_text, image)
                 })
@@ -135,7 +133,7 @@ async fn render(
         RenderMode::Mutations  => Mutation::showcase(),
         RenderMode::Compound20 => random_compounds(20),
     };
-    Ok(stream_response(prog, req.preview, mutations))
+    Ok(stream_response(prog, req.size, mutations))
 }
 
 async fn download_png(
@@ -169,7 +167,11 @@ async fn download_jxl(
 
 // ── Streaming response ────────────────────────────────────────────────────────
 
-fn stream_response(prog: ImageProgram, preview: bool, mutations: Vec<Mutation>) -> Response {
+fn render_at_size(prog: &ImageProgram, size: u32) -> (Vec<u8>, u32, u32) {
+    if size == 0 { prog.render_display() } else { prog.render_display_at(size) }
+}
+
+fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> Response {
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
@@ -178,11 +180,7 @@ fn stream_response(prog: ImageProgram, preview: bool, mutations: Vec<Mutation>) 
         let prog_orig = prog.clone();
         let orig_handle = tokio::task::spawn_blocking(move || {
             let program_text = prog_orig.to_text();
-            let (rgba, w, h) = if preview {
-                prog_orig.render_display_preview()
-            } else {
-                prog_orig.render_display()
-            };
+            let (rgba, w, h) = render_at_size(&prog_orig, size);
             let image = to_payload(&rgba, w, h, &program_text);
             (program_text, image)
         });
@@ -190,24 +188,29 @@ fn stream_response(prog: ImageProgram, preview: bool, mutations: Vec<Mutation>) 
         let mut ordered: FuturesOrdered<_> = mutations
             .into_iter()
             .map(|m| {
-                let label    = m.label();
                 let compound = m.is_compound();
                 let p = prog.clone();
                 tokio::task::spawn_blocking(move || {
-                    let mutated = m.apply(&p);
-                    let text = mutated.to_text();
-                    let (rgba, w, h) = if preview {
-                        mutated.render_display_preview()
-                    } else {
-                        mutated.render_display()
+                    const MAX_RETRIES: usize = 5;
+                    let mut current = m;
+                    let mut retries = 0;
+
+                    let (label, text, rgba, w, h) = loop {
+                        let mutated = current.apply(&p);
+                        let text = mutated.to_text();
+                        let (rgba, w, h) = render_at_size(&mutated, size);
+                        // For compound mutations, retry with a fresh random compound
+                        // if the result is degenerate (flat / solid colour).
+                        if compound && is_degenerate(&rgba) && retries < MAX_RETRIES {
+                            retries += 1;
+                            current = random_compounds(1).pop().unwrap();
+                            continue;
+                        }
+                        break (current.label(), text, rgba, w, h);
                     };
-                    let warning = if is_degenerate(&rgba) {
-                        Some("Degenerate render — this program may produce a flat image in jxl-art too, or our simplified renderer doesn't capture it correctly.".to_string())
-                    } else {
-                        None
-                    };
+
                     let image = to_payload(&rgba, w, h, &text);
-                    (label, text, image, compound, warning)
+                    (label, text, image, compound, None::<String>)
                 })
             })
             .collect();
