@@ -79,9 +79,12 @@ cmake -S "$TMP_SRC" -B "$TMP_BUILD" \
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 echo "Building jxl_from_tree (using $NPROC cores)..."
-cmake --build "$TMP_BUILD" --target jxl_from_tree --parallel "$NPROC"
+cmake --build "$TMP_BUILD" --parallel "$NPROC"
 
 # ── Install ───────────────────────────────────────────────────────────────────
+
+cmake --install "$TMP_BUILD"
+ldconfig
 
 cp "$TMP_BUILD/tools/jxl_from_tree" "$DEST"
 chmod +x "$DEST"
