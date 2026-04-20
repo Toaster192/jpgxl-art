@@ -1,9 +1,8 @@
 Bitdepth 10
-DeltaPalette 
+DeltaPalette
 
 if W-NW > 0
   - Select -22
   if NW-N > 0
     - AvgN+NE 2
     - AvgW+NW -1
-  

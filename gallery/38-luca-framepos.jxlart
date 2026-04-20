@@ -2,7 +2,6 @@ RCT 0
 Bitdepth 3
 FramePos 0 -700
 
-
 if W+N-NW > 7
   - NE -3
   - Gradient 4

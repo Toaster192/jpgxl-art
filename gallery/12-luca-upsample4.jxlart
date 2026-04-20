@@ -5,5 +5,5 @@ DeltaPalette
 Upsample 4
 
 if W+N-NW > -32
-- Gradient -1
-- NE 224
+  - Gradient -1
+  - NE 224

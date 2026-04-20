@@ -3,7 +3,5 @@ DeltaPalette
 Squeeze
 
 if c > 1
-- Set 6
-- NW 7
-
-
+  - Set 6
+  - NW 7

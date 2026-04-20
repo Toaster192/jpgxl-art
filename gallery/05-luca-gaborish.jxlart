@@ -4,5 +4,5 @@ EPF 2
 Gaborish
 
 if W+N-NW > -5
-- NW -1
-- Gradient 6
+  - NW -1
+  - Gradient 6

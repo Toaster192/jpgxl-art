@@ -1,6 +1,7 @@
 use rand::Rng;
 use serde::Serialize;
 
+use crate::render;
 use crate::tree::{Condition, ImageProgram, Node, Op, Predictor, Var};
 
 // ── Random program generation ─────────────────────────────────────────────────
@@ -29,16 +30,19 @@ pub fn random_program() -> ImageProgram {
     }
 }
 
-/// Generate a random program whose 64×64 preview is not degenerate
+/// Generate a random program whose preview is not degenerate
 /// (single-colour / flat). Falls through after `MAX_TRIES` attempts so the
-/// caller is never blocked.
+/// caller is never blocked. Uses the roundtrip renderer at 64 px so the
+/// check is accurate to what libjxl will actually produce.
 pub fn random_program_non_degenerate() -> ImageProgram {
     const MAX_TRIES: usize = 5;
     let mut prog = random_program();
     for _ in 0..MAX_TRIES {
-        let (rgba, _, _) = prog.render_display_at(64);
-        if !is_degenerate(&rgba) {
-            return prog;
+        let text = prog.to_text();
+        if let Ok((rgba, _, _)) = render::render_roundtrip(&text, 64) {
+            if !is_degenerate(&rgba) {
+                return prog;
+            }
         }
         prog = random_program();
     }

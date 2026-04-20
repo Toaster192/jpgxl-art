@@ -9,8 +9,5 @@ if x > 0
       if NW-N > -1
         - Set 0
         - Set 1
-
-
-
     - Set 0
   - Set 1

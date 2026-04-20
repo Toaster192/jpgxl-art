@@ -1,10 +1,8 @@
 Bitdepth 10
 DeltaPalette
-
 Width 512
 Height 256
 
 if W+N-NW > -70
   - Gradient -16
   - WW 17
-  

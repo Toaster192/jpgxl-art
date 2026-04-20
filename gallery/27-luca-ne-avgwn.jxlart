@@ -2,6 +2,5 @@ Bitdepth 8
 DeltaPalette
 
 if W+N-NW > 0
-- NE -9999999
-- AvgW+N 9999
-   
+  - NE -9999999
+  - AvgW+N 9999

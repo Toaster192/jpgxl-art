@@ -5,9 +5,9 @@ Width 512
 Height 512
 
 if W > -8
- if c > 7
- - Set -2
- - W -1
- if c > 5
- - Set 4
- - W 1
+  if c > 7
+    - Set -2
+    - W -1
+  if c > 5
+    - Set 4
+    - W 1

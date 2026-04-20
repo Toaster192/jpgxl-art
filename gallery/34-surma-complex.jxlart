@@ -4,769 +4,769 @@ Bitdepth 8
 RCT 0
 
 if y > 137
-if x > 88
-if y > 153
-if y > 201
-if y > 222
-if c > 1
-- Set +25
-if c > 0
-- Set +33
-- Set +37
-if x > 125
-if c > 1
-- Set +26
-if c > 0
-- Set +35
-- Set +41
-if y > 214
-if c > 1
-- Set +29
-if c > 0
-- Set +46
-- Set +63
-if c > 1
-- Set +36
-if c > 0
-- Set +61
-- Set +91
-if x > 156
-if y > 180
-if c > 1
-- Set +25
-if c > 0
-- Set +33
-- Set +36
-if c > 1
-- Set +37
-if c > 0
-- Set +50
-- Set +61
-if c > 1
-- Set +24
-if c > 0
-- Set +31
-- Set +36
-if x > 152
-if c > 1
-- Set +43
-if c > 0
-- Set +57
-- Set +75
-if x > 132
-if c > 1
-- Set +25
-if c > 0
-- Set +33
-- Set +41
-if c > 1
-- Set +33
-if c > 0
-- Set +48
-- Set +62
-if y > 224
-if x > 11
-if y > 236
-if c > 1
-- Set +27
-if c > 0
-- Set +32
-- Set +37
-if x > 42
-if x > 53
-if c > 1
-- Set +30
-if c > 0
-- Set +42
-- Set +56
-if c > 1
-- Set +43
-if c > 0
-- Set +63
-- Set +86
-if c > 1
-- Set +27
-if c > 0
-- Set +34
-- Set +40
-if c > 1
-- Set +20
-if c > 0
-- Set +24
-- Set +25
-if y > 189
-if x > 43
-if x > 77
-if y > 198
-if y > 207
-if c > 1
-- Set +44
-if c > 0
-- Set +79
-- Set +113
-if c > 1
-- Set +67
-if c > 0
-- Set +122
-- Set +164
-if c > 1
-- Set +19
-if c > 0
-- Set +27
-- Set +28
-if y > 204
-if y > 220
-if x > 59
-if c > 1
-- Set +32
-if c > 0
-- Set +50
-- Set +68
-if c > 1
-- Set +55
-if c > 0
-- Set +103
-- Set +138
-if x > 49
-if c > 1
-- Set +61
-if c > 0
-- Set +114
-- Set +152
-if y > 209
-if c > 1
-- Set +60
-if c > 0
-- Set +108
-- Set +143
-if c > 1
-- Set +32
-if c > 0
-- Set +47
-- Set +64
-if y > 192
-if x > 46
-if x > 74
-if c > 1
-- Set +61
-if c > 0
-- Set +116
-- Set +153
-if c > 1
-- Set +90
-if c > 0
-- Set +155
-- Set +196
-if c > 1
-- Set +48
-if c > 0
-- Set +88
-- Set +119
-if x > 64
-if c > 1
-- Set +23
-if c > 0
-- Set +37
-- Set +47
-if x > 47
-if c > 1
-- Set +104
-if c > 0
-- Set +164
-- Set +201
-if c > 1
-- Set +46
-if c > 0
-- Set +90
-- Set +125
-if x > 20
-if y > 200
-if x > 39
-if c > 1
-- Set +39
-if c > 0
-- Set +61
-- Set +82
-if c > 1
-- Set +24
-if c > 0
-- Set +33
-- Set +40
-if c > 1
-- Set +36
-if c > 0
-- Set +60
-- Set +83
-if c > 1
-- Set +23
-if c > 0
-- Set +28
-- Set +32
-if y > 161
-if x > 57
-if c > 1
-- Set +25
-if c > 0
-- Set +32
-- Set +36
-if c > 1
-- Set +33
-if c > 0
-- Set +48
-- Set +60
-if x > 30
-if y > 144
-if c > 1
-- Set +30
-if c > 0
-- Set +43
-- Set +56
-if x > 65
-if c > 1
-- Set +50
-if c > 0
-- Set +88
-- Set +123
-if c > 1
-- Set +35
-if c > 0
-- Set +51
-- Set +68
-if x > 8
-if c > 1
-- Set +52
-if c > 0
-- Set +76
-- Set +107
-if c > 1
-- Set +41
-if c > 0
-- Set +50
-- Set +54
-if y > 69
-if x > 101
-if x > 134
-if y > 129
-if x > 147
-if c > 1
-- Set +46
-if c > 0
-- Set +64
-- Set +85
-if c > 1
-- Set +27
-if c > 0
-- Set +37
-- Set +46
-if y > 72
-if y > 107
-if y > 123
-if x > 155
-if c > 1
-- Set +67
-if c > 0
-- Set +98
-- Set +116
-if c > 1
-- Set +41
-if c > 0
-- Set +54
-- Set +69
-if x > 164
-if c > 1
-- Set +47
-if c > 0
-- Set +69
-- Set +73
-if c > 1
-- Set +70
-if c > 0
-- Set +101
-- Set +117
-if c > 1
-- Set +61
-if c > 0
-- Set +75
-- Set +80
-if c > 1
-- Set +98
-if c > 0
-- Set +115
-- Set +118
-if y > 119
-if y > 130
-if c > 1
-- Set +30
-if c > 0
-- Set +42
-- Set +54
-if x > 125
-if c > 1
-- Set +33
-if c > 0
-- Set +47
-- Set +63
-if c > 1
-- Set +50
-if c > 0
-- Set +84
-- Set +116
-if x > 120
-if y > 101
-if c > 1
-- Set +38
-if c > 0
-- Set +47
-- Set +55
-if c > 1
-- Set +69
-if c > 0
-- Set +81
-- Set +84
-if y > 104
-if x > 111
-if c > 1
-- Set +29
-if c > 0
-- Set +40
-- Set +51
-if c > 1
-- Set +43
-if c > 0
-- Set +66
-- Set +94
-if c > 1
-- Set +32
-if c > 0
-- Set +38
-- Set +45
-if x > 65
-if y > 107
-if x > 96
-if c > 1
-- Set +76
-if c > 0
-- Set +135
-- Set +183
-if y > 111
-if c > 1
-- Set +108
-if c > 0
-- Set +183
-- Set +228
-if x > 71
-if c > 1
-- Set +98
-if c > 0
-- Set +165
-- Set +209
-if c > 1
-- Set +56
-if c > 0
-- Set +86
-- Set +113
-if y > 87
-if x > 74
-if y > 99
-if y > 104
-if c > 1
-- Set +85
-if c > 0
-- Set +139
-- Set +180
-if x > 77
-if c > 1
-- Set +69
-if c > 0
-- Set +111
-- Set +150
-if c > 1
-- Set +34
-if c > 0
-- Set +50
-- Set +69
-if x > 83
-if c > 1
-- Set +42
-if c > 0
-- Set +53
-- Set +69
-if y > 90
-if c > 1
-- Set +44
-if c > 0
-- Set +64
-- Set +85
-if c > 1
-- Set +79
-if c > 0
-- Set +122
-- Set +159
-if c > 1
-- Set +29
-if c > 0
-- Set +38
-- Set +47
-if x > 91
-if c > 1
-- Set +42
-if c > 0
-- Set +54
-- Set +70
-if y > 73
-if c > 1
-- Set +70
-if c > 0
-- Set +114
-- Set +154
-if c > 1
-- Set +91
-if c > 0
-- Set +152
-- Set +196
-if x > 7
-if x > 48
-if y > 121
-if x > 57
-if y > 133
-if c > 1
-- Set +54
-if c > 0
-- Set +98
-- Set +135
-if c > 1
-- Set +91
-if c > 0
-- Set +156
-- Set +203
-if c > 1
-- Set +38
-if c > 0
-- Set +55
-- Set +75
-if x > 52
-if c > 1
-- Set +37
-if c > 0
-- Set +49
-- Set +62
-if c > 1
-- Set +60
-if c > 0
-- Set +72
-- Set +79
-if y > 108
-if x > 39
-if c > 1
-- Set +45
-if c > 0
-- Set +55
-- Set +67
-if c > 1
-- Set +56
-if c > 0
-- Set +77
-- Set +97
-if c > 1
-- Set +69
-if c > 0
-- Set +82
-- Set +87
-if c > 1
-- Set +46
-if c > 0
-- Set +56
-- Set +59
-if x > 116
-if y > 18
-if y > 56
-if x > 138
-if x > 157
-if c > 1
-- Set +109
-if c > 0
-- Set +133
-- Set +140
-if c > 1
-- Set +136
-if c > 0
-- Set +167
-- Set +181
-if c > 1
-- Set +85
-if c > 0
-- Set +99
-- Set +101
-if y > 27
-if y > 50
-if x > 135
-if x > 158
-if c > 1
-- Set +117
-if c > 0
-- Set +141
-- Set +147
-if c > 1
-- Set +145
-if c > 0
-- Set +178
-- Set +192
-if c > 1
-- Set +101
-if c > 0
-- Set +117
-- Set +126
-if c > 1
-- Set +140
-if c > 0
-- Set +164
-- Set +178
-if c > 1
-- Set +124
-if c > 0
-- Set +141
-- Set +148
-if y > 10
-if c > 1
-- Set +111
-if c > 0
-- Set +126
-- Set +129
-if c > 1
-- Set +98
-if c > 0
-- Set +107
-- Set +106
-if x > 86
-if y > 30
-if x > 94
-if x > 111
-if y > 45
-if c > 1
-- Set +46
-if c > 0
-- Set +59
-- Set +64
-if c > 1
-- Set +135
-if c > 0
-- Set +158
-- Set +171
-if y > 36
-if x > 97
-if c > 1
-- Set +35
-if c > 0
-- Set +45
-- Set +51
-if c > 1
-- Set +51
-if c > 0
-- Set +72
-- Set +93
-if x > 106
-if c > 1
-- Set +123
-if c > 0
-- Set +142
-- Set +153
-if c > 1
-- Set +42
-if c > 0
-- Set +50
-- Set +59
-if y > 41
-if y > 61
-if c > 1
-- Set +85
-if c > 0
-- Set +145
-- Set +188
-if y > 55
-if c > 1
-- Set +47
-if c > 0
-- Set +73
-- Set +98
-if c > 1
-- Set +71
-if c > 0
-- Set +112
-- Set +147
-if c > 1
-- Set +39
-if c > 0
-- Set +53
-- Set +67
-if x > 101
-if y > 12
-if c > 1
-- Set +122
-if c > 0
-- Set +138
-- Set +147
-if c > 1
-- Set +96
-if c > 0
-- Set +107
-- Set +107
-if y > 25
-if c > 1
-- Set +42
-if c > 0
-- Set +57
-- Set +66
-if y > 14
-if c > 1
-- Set +106
-if c > 0
-- Set +123
-- Set +131
-if c > 1
-- Set +88
-if c > 0
-- Set +99
-- Set +101
-if y > 18
-if y > 55
-if x > 62
-if y > 63
-if c > 1
-- Set +99
-if c > 0
-- Set +161
-- Set +204
-if c > 1
-- Set +64
-if c > 0
-- Set +107
-- Set +142
-if x > 54
-if c > 1
-- Set +41
-if c > 0
-- Set +55
-- Set +73
-if x > 10
-if y > 62
-if c > 1
-- Set +77
-if c > 0
-- Set +95
-- Set +102
-if x > 40
-if c > 1
-- Set +131
-if c > 0
-- Set +161
-- Set +174
-if c > 1
-- Set +97
-if c > 0
-- Set +121
-- Set +129
-if c > 1
-- Set +56
-if c > 0
-- Set +67
-- Set +69
-if y > 35
-if x > 5
-if x > 55
-if x > 65
-if y > 38
-if c > 1
-- Set +109
-if c > 0
-- Set +172
-- Set +213
-if c > 1
-- Set +82
-if c > 0
-- Set +129
-- Set +164
-if y > 43
-if x > 62
-if c > 1
-- Set +84
-if c > 0
-- Set +128
-- Set +166
-if c > 1
-- Set +56
-if c > 0
-- Set +79
-- Set +96
-if x > 60
-if c > 1
-- Set +66
-if c > 0
-- Set +93
-- Set +114
-if c > 1
-- Set +138
-if c > 0
-- Set +160
-- Set +177
-if x > 17
-if c > 1
-- Set +139
-if c > 0
-- Set +168
-- Set +183
-if y > 50
-if c > 1
-- Set +95
-if c > 0
-- Set +118
-- Set +126
-if c > 1
-- Set +129
-if c > 0
-- Set +153
-- Set +164
-if c > 1
-- Set +81
-if c > 0
-- Set +96
-- Set +102
-if x > 67
-if y > 24
-if x > 77
-if c > 1
-- Set +30
-if c > 0
-- Set +43
-- Set +55
-if c > 1
-- Set +54
-if c > 0
-- Set +74
-- Set +89
-if c > 1
-- Set +101
-if c > 0
-- Set +120
-- Set +127
-if y > 26
-if c > 1
-- Set +121
-if c > 0
-- Set +142
-- Set +152
-if c > 1
-- Set +102
-if c > 0
-- Set +122
-- Set +127
-if y > 10
-if c > 1
-- Set +91
-if c > 0
-- Set +107
-- Set +110
-if c > 1
-- Set +80
-if c > 0
-- Set +91
-- Set +90
+  if x > 88
+    if y > 153
+      if y > 201
+        if y > 222
+          if c > 1
+            - Set +25
+            if c > 0
+              - Set +33
+              - Set +37
+          if x > 125
+            if c > 1
+              - Set +26
+              if c > 0
+                - Set +35
+                - Set +41
+            if y > 214
+              if c > 1
+                - Set +29
+                if c > 0
+                  - Set +46
+                  - Set +63
+              if c > 1
+                - Set +36
+                if c > 0
+                  - Set +61
+                  - Set +91
+        if x > 156
+          if y > 180
+            if c > 1
+              - Set +25
+              if c > 0
+                - Set +33
+                - Set +36
+            if c > 1
+              - Set +37
+              if c > 0
+                - Set +50
+                - Set +61
+          if c > 1
+            - Set +24
+            if c > 0
+              - Set +31
+              - Set +36
+      if x > 152
+        if c > 1
+          - Set +43
+          if c > 0
+            - Set +57
+            - Set +75
+        if x > 132
+          if c > 1
+            - Set +25
+            if c > 0
+              - Set +33
+              - Set +41
+          if c > 1
+            - Set +33
+            if c > 0
+              - Set +48
+              - Set +62
+    if y > 224
+      if x > 11
+        if y > 236
+          if c > 1
+            - Set +27
+            if c > 0
+              - Set +32
+              - Set +37
+          if x > 42
+            if x > 53
+              if c > 1
+                - Set +30
+                if c > 0
+                  - Set +42
+                  - Set +56
+              if c > 1
+                - Set +43
+                if c > 0
+                  - Set +63
+                  - Set +86
+            if c > 1
+              - Set +27
+              if c > 0
+                - Set +34
+                - Set +40
+        if c > 1
+          - Set +20
+          if c > 0
+            - Set +24
+            - Set +25
+      if y > 189
+        if x > 43
+          if x > 77
+            if y > 198
+              if y > 207
+                if c > 1
+                  - Set +44
+                  if c > 0
+                    - Set +79
+                    - Set +113
+                if c > 1
+                  - Set +67
+                  if c > 0
+                    - Set +122
+                    - Set +164
+              if c > 1
+                - Set +19
+                if c > 0
+                  - Set +27
+                  - Set +28
+            if y > 204
+              if y > 220
+                if x > 59
+                  if c > 1
+                    - Set +32
+                    if c > 0
+                      - Set +50
+                      - Set +68
+                  if c > 1
+                    - Set +55
+                    if c > 0
+                      - Set +103
+                      - Set +138
+                if x > 49
+                  if c > 1
+                    - Set +61
+                    if c > 0
+                      - Set +114
+                      - Set +152
+                  if y > 209
+                    if c > 1
+                      - Set +60
+                      if c > 0
+                        - Set +108
+                        - Set +143
+                    if c > 1
+                      - Set +32
+                      if c > 0
+                        - Set +47
+                        - Set +64
+              if y > 192
+                if x > 46
+                  if x > 74
+                    if c > 1
+                      - Set +61
+                      if c > 0
+                        - Set +116
+                        - Set +153
+                    if c > 1
+                      - Set +90
+                      if c > 0
+                        - Set +155
+                        - Set +196
+                  if c > 1
+                    - Set +48
+                    if c > 0
+                      - Set +88
+                      - Set +119
+                if x > 64
+                  if c > 1
+                    - Set +23
+                    if c > 0
+                      - Set +37
+                      - Set +47
+                  if x > 47
+                    if c > 1
+                      - Set +104
+                      if c > 0
+                        - Set +164
+                        - Set +201
+                    if c > 1
+                      - Set +46
+                      if c > 0
+                        - Set +90
+                        - Set +125
+          if x > 20
+            if y > 200
+              if x > 39
+                if c > 1
+                  - Set +39
+                  if c > 0
+                    - Set +61
+                    - Set +82
+                if c > 1
+                  - Set +24
+                  if c > 0
+                    - Set +33
+                    - Set +40
+              if c > 1
+                - Set +36
+                if c > 0
+                  - Set +60
+                  - Set +83
+            if c > 1
+              - Set +23
+              if c > 0
+                - Set +28
+                - Set +32
+        if y > 161
+          if x > 57
+            if c > 1
+              - Set +25
+              if c > 0
+                - Set +32
+                - Set +36
+            if c > 1
+              - Set +33
+              if c > 0
+                - Set +48
+                - Set +60
+          if x > 30
+            if y > 144
+              if c > 1
+                - Set +30
+                if c > 0
+                  - Set +43
+                  - Set +56
+              if x > 65
+                if c > 1
+                  - Set +50
+                  if c > 0
+                    - Set +88
+                    - Set +123
+                if c > 1
+                  - Set +35
+                  if c > 0
+                    - Set +51
+                    - Set +68
+            if x > 8
+              if c > 1
+                - Set +52
+                if c > 0
+                  - Set +76
+                  - Set +107
+              if c > 1
+                - Set +41
+                if c > 0
+                  - Set +50
+                  - Set +54
+  if y > 69
+    if x > 101
+      if x > 134
+        if y > 129
+          if x > 147
+            if c > 1
+              - Set +46
+              if c > 0
+                - Set +64
+                - Set +85
+            if c > 1
+              - Set +27
+              if c > 0
+                - Set +37
+                - Set +46
+          if y > 72
+            if y > 107
+              if y > 123
+                if x > 155
+                  if c > 1
+                    - Set +67
+                    if c > 0
+                      - Set +98
+                      - Set +116
+                  if c > 1
+                    - Set +41
+                    if c > 0
+                      - Set +54
+                      - Set +69
+                if x > 164
+                  if c > 1
+                    - Set +47
+                    if c > 0
+                      - Set +69
+                      - Set +73
+                  if c > 1
+                    - Set +70
+                    if c > 0
+                      - Set +101
+                      - Set +117
+              if c > 1
+                - Set +61
+                if c > 0
+                  - Set +75
+                  - Set +80
+            if c > 1
+              - Set +98
+              if c > 0
+                - Set +115
+                - Set +118
+        if y > 119
+          if y > 130
+            if c > 1
+              - Set +30
+              if c > 0
+                - Set +42
+                - Set +54
+            if x > 125
+              if c > 1
+                - Set +33
+                if c > 0
+                  - Set +47
+                  - Set +63
+              if c > 1
+                - Set +50
+                if c > 0
+                  - Set +84
+                  - Set +116
+          if x > 120
+            if y > 101
+              if c > 1
+                - Set +38
+                if c > 0
+                  - Set +47
+                  - Set +55
+              if c > 1
+                - Set +69
+                if c > 0
+                  - Set +81
+                  - Set +84
+            if y > 104
+              if x > 111
+                if c > 1
+                  - Set +29
+                  if c > 0
+                    - Set +40
+                    - Set +51
+                if c > 1
+                  - Set +43
+                  if c > 0
+                    - Set +66
+                    - Set +94
+              if c > 1
+                - Set +32
+                if c > 0
+                  - Set +38
+                  - Set +45
+      if x > 65
+        if y > 107
+          if x > 96
+            if c > 1
+              - Set +76
+              if c > 0
+                - Set +135
+                - Set +183
+            if y > 111
+              if c > 1
+                - Set +108
+                if c > 0
+                  - Set +183
+                  - Set +228
+              if x > 71
+                if c > 1
+                  - Set +98
+                  if c > 0
+                    - Set +165
+                    - Set +209
+                if c > 1
+                  - Set +56
+                  if c > 0
+                    - Set +86
+                    - Set +113
+          if y > 87
+            if x > 74
+              if y > 99
+                if y > 104
+                  if c > 1
+                    - Set +85
+                    if c > 0
+                      - Set +139
+                      - Set +180
+                  if x > 77
+                    if c > 1
+                      - Set +69
+                      if c > 0
+                        - Set +111
+                        - Set +150
+                    if c > 1
+                      - Set +34
+                      if c > 0
+                        - Set +50
+                        - Set +69
+                if x > 83
+                  if c > 1
+                    - Set +42
+                    if c > 0
+                      - Set +53
+                      - Set +69
+                  if y > 90
+                    if c > 1
+                      - Set +44
+                      if c > 0
+                        - Set +64
+                        - Set +85
+                    if c > 1
+                      - Set +79
+                      if c > 0
+                        - Set +122
+                        - Set +159
+              if c > 1
+                - Set +29
+                if c > 0
+                  - Set +38
+                  - Set +47
+            if x > 91
+              if c > 1
+                - Set +42
+                if c > 0
+                  - Set +54
+                  - Set +70
+              if y > 73
+                if c > 1
+                  - Set +70
+                  if c > 0
+                    - Set +114
+                    - Set +154
+                if c > 1
+                  - Set +91
+                  if c > 0
+                    - Set +152
+                    - Set +196
+        if x > 7
+          if x > 48
+            if y > 121
+              if x > 57
+                if y > 133
+                  if c > 1
+                    - Set +54
+                    if c > 0
+                      - Set +98
+                      - Set +135
+                  if c > 1
+                    - Set +91
+                    if c > 0
+                      - Set +156
+                      - Set +203
+                if c > 1
+                  - Set +38
+                  if c > 0
+                    - Set +55
+                    - Set +75
+              if x > 52
+                if c > 1
+                  - Set +37
+                  if c > 0
+                    - Set +49
+                    - Set +62
+                if c > 1
+                  - Set +60
+                  if c > 0
+                    - Set +72
+                    - Set +79
+            if y > 108
+              if x > 39
+                if c > 1
+                  - Set +45
+                  if c > 0
+                    - Set +55
+                    - Set +67
+                if c > 1
+                  - Set +56
+                  if c > 0
+                    - Set +77
+                    - Set +97
+              if c > 1
+                - Set +69
+                if c > 0
+                  - Set +82
+                  - Set +87
+          if c > 1
+            - Set +46
+            if c > 0
+              - Set +56
+              - Set +59
+    if x > 116
+      if y > 18
+        if y > 56
+          if x > 138
+            if x > 157
+              if c > 1
+                - Set +109
+                if c > 0
+                  - Set +133
+                  - Set +140
+              if c > 1
+                - Set +136
+                if c > 0
+                  - Set +167
+                  - Set +181
+            if c > 1
+              - Set +85
+              if c > 0
+                - Set +99
+                - Set +101
+          if y > 27
+            if y > 50
+              if x > 135
+                if x > 158
+                  if c > 1
+                    - Set +117
+                    if c > 0
+                      - Set +141
+                      - Set +147
+                  if c > 1
+                    - Set +145
+                    if c > 0
+                      - Set +178
+                      - Set +192
+                if c > 1
+                  - Set +101
+                  if c > 0
+                    - Set +117
+                    - Set +126
+              if c > 1
+                - Set +140
+                if c > 0
+                  - Set +164
+                  - Set +178
+            if c > 1
+              - Set +124
+              if c > 0
+                - Set +141
+                - Set +148
+        if y > 10
+          if c > 1
+            - Set +111
+            if c > 0
+              - Set +126
+              - Set +129
+          if c > 1
+            - Set +98
+            if c > 0
+              - Set +107
+              - Set +106
+      if x > 86
+        if y > 30
+          if x > 94
+            if x > 111
+              if y > 45
+                if c > 1
+                  - Set +46
+                  if c > 0
+                    - Set +59
+                    - Set +64
+                if c > 1
+                  - Set +135
+                  if c > 0
+                    - Set +158
+                    - Set +171
+              if y > 36
+                if x > 97
+                  if c > 1
+                    - Set +35
+                    if c > 0
+                      - Set +45
+                      - Set +51
+                  if c > 1
+                    - Set +51
+                    if c > 0
+                      - Set +72
+                      - Set +93
+                if x > 106
+                  if c > 1
+                    - Set +123
+                    if c > 0
+                      - Set +142
+                      - Set +153
+                  if c > 1
+                    - Set +42
+                    if c > 0
+                      - Set +50
+                      - Set +59
+            if y > 41
+              if y > 61
+                if c > 1
+                  - Set +85
+                  if c > 0
+                    - Set +145
+                    - Set +188
+                if y > 55
+                  if c > 1
+                    - Set +47
+                    if c > 0
+                      - Set +73
+                      - Set +98
+                  if c > 1
+                    - Set +71
+                    if c > 0
+                      - Set +112
+                      - Set +147
+              if c > 1
+                - Set +39
+                if c > 0
+                  - Set +53
+                  - Set +67
+          if x > 101
+            if y > 12
+              if c > 1
+                - Set +122
+                if c > 0
+                  - Set +138
+                  - Set +147
+              if c > 1
+                - Set +96
+                if c > 0
+                  - Set +107
+                  - Set +107
+            if y > 25
+              if c > 1
+                - Set +42
+                if c > 0
+                  - Set +57
+                  - Set +66
+              if y > 14
+                if c > 1
+                  - Set +106
+                  if c > 0
+                    - Set +123
+                    - Set +131
+                if c > 1
+                  - Set +88
+                  if c > 0
+                    - Set +99
+                    - Set +101
+        if y > 18
+          if y > 55
+            if x > 62
+              if y > 63
+                if c > 1
+                  - Set +99
+                  if c > 0
+                    - Set +161
+                    - Set +204
+                if c > 1
+                  - Set +64
+                  if c > 0
+                    - Set +107
+                    - Set +142
+              if x > 54
+                if c > 1
+                  - Set +41
+                  if c > 0
+                    - Set +55
+                    - Set +73
+                if x > 10
+                  if y > 62
+                    if c > 1
+                      - Set +77
+                      if c > 0
+                        - Set +95
+                        - Set +102
+                    if x > 40
+                      if c > 1
+                        - Set +131
+                        if c > 0
+                          - Set +161
+                          - Set +174
+                      if c > 1
+                        - Set +97
+                        if c > 0
+                          - Set +121
+                          - Set +129
+                  if c > 1
+                    - Set +56
+                    if c > 0
+                      - Set +67
+                      - Set +69
+            if y > 35
+              if x > 5
+                if x > 55
+                  if x > 65
+                    if y > 38
+                      if c > 1
+                        - Set +109
+                        if c > 0
+                          - Set +172
+                          - Set +213
+                      if c > 1
+                        - Set +82
+                        if c > 0
+                          - Set +129
+                          - Set +164
+                    if y > 43
+                      if x > 62
+                        if c > 1
+                          - Set +84
+                          if c > 0
+                            - Set +128
+                            - Set +166
+                        if c > 1
+                          - Set +56
+                          if c > 0
+                            - Set +79
+                            - Set +96
+                      if x > 60
+                        if c > 1
+                          - Set +66
+                          if c > 0
+                            - Set +93
+                            - Set +114
+                        if c > 1
+                          - Set +138
+                          if c > 0
+                            - Set +160
+                            - Set +177
+                  if x > 17
+                    if c > 1
+                      - Set +139
+                      if c > 0
+                        - Set +168
+                        - Set +183
+                    if y > 50
+                      if c > 1
+                        - Set +95
+                        if c > 0
+                          - Set +118
+                          - Set +126
+                      if c > 1
+                        - Set +129
+                        if c > 0
+                          - Set +153
+                          - Set +164
+                if c > 1
+                  - Set +81
+                  if c > 0
+                    - Set +96
+                    - Set +102
+              if x > 67
+                if y > 24
+                  if x > 77
+                    if c > 1
+                      - Set +30
+                      if c > 0
+                        - Set +43
+                        - Set +55
+                    if c > 1
+                      - Set +54
+                      if c > 0
+                        - Set +74
+                        - Set +89
+                  if c > 1
+                    - Set +101
+                    if c > 0
+                      - Set +120
+                      - Set +127
+                if y > 26
+                  if c > 1
+                    - Set +121
+                    if c > 0
+                      - Set +142
+                      - Set +152
+                  if c > 1
+                    - Set +102
+                    if c > 0
+                      - Set +122
+                      - Set +127
+          if y > 10
+            if c > 1
+              - Set +91
+              if c > 0
+                - Set +107
+                - Set +110
+            if c > 1
+              - Set +80
+              if c > 0
+                - Set +91
+                - Set +90
