@@ -1,0 +1,8 @@
+
+Bitdepth 12
+DeltaPalette
+Upsample 1
+
+if WGH > 0
+- AvgN+NW 2
+- AvgN+NE -2

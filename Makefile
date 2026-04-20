@@ -4,11 +4,11 @@ JXL_BIN := ./jxl_from_tree
 
 ## Build the Rust project only (jxl_from_tree is optional).
 build:
-	cargo build
+	cargo build --release
 
 ## Start the development server.
 run: build
-	cargo run
+	cargo run --release
 
 ## Full setup: build jxl_from_tree from source, then cargo build.
 ## Safe to re-run — skips the libjxl build if the binary already exists.

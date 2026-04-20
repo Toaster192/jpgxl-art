@@ -1,0 +1,16 @@
+DeltaPalette
+Width 1024
+Height 1024
+Bitdepth 8
+
+if x > 0
+  if y > 0
+    if N > 54
+      - Set 0
+      if NW-N > 4
+        - Gradient +3
+        if NW-N > -4
+          - Weighted -3
+          - Weighted +3
+    - Set 0
+  - Set 255

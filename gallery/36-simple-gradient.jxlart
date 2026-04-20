@@ -1,0 +1,16 @@
+Bitdepth 8
+Width 512
+Height 512
+
+if c > 1
+  if y > 256
+    - Set 200
+    if x > 256
+      - Set 100
+      - Set 50
+  if x > 256
+    - Gradient + 50
+    - N - 20
+if y > 256
+  - W + 30
+  - Set 180

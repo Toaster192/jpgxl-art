@@ -1,0 +1,135 @@
+Width 1984
+Height 1294
+FramePos -64 -214
+Bitdepth 10
+Rec2100 PQ
+
+if g > 21
+  if g > 22
+    if g > 23
+      if x > 437
+        if x > 720
+          if x > 800
+            if x > 880
+              if c > 0
+                if c > 1
+                  - Set 582
+                  - Set 201
+                - Set 296
+              if c > 0
+                if c > 1
+                  - Set 225
+                  - Set 335
+                - Set 545
+            if c > 0
+              if c > 1
+                - Set 584
+                - Set 348
+              - Set 552
+          - Set 0
+        - Set 594
+      if x > 143
+        if x > 223
+          if x > 303
+            if x > 577
+              if x > 647
+                if x > 715
+                  if x > 785
+                    - Set 0
+                    - Set 41
+                  - Set 0
+                - Set 19
+              - Set 0
+            if c > 0
+              if c > 1
+                - Set 355
+                - Set 585
+              - Set 479
+          if c > 0
+            if c > 1
+              - Set 592
+              - Set 586
+            - Set 491
+        if c > 0
+          if c > 1
+            - Set 370
+            - Set 593
+          - Set 589
+    if y > 843
+      if y > 933
+        if x > 0
+          - W 1
+          - Set 103
+        if x > 101
+          if x > 204
+            if x > 307
+              if x > 410
+                if x > 513
+                  if x > 719
+                    - Set 594
+                    - Set 1023
+                  - Set 921
+                - Set 818
+              - Set 716
+            - Set 614
+          - Set 512
+      if x > 719
+        - Set 409
+        if y > 303
+          if y > 304
+            - N 0
+            - N -429
+          if x > 101
+            if x > 307
+              if x > 513
+                if c > 1
+                  - Set 1023
+                  - Set 0
+                if c > 0
+                  - Set 0
+                  - Set 1023
+              if c > 0
+                if c > 1
+                  - Set 1023
+                  - Set 0
+                - Set 1023
+            if c > 0
+              if c > 1
+                - Set 0
+                - Set 1023
+              - Set 0
+  if y > 843
+    if y > 933
+      if x > 921
+        - W 1
+        - Set 0
+      if x > 303
+        if x > 612
+          if x > 715
+            if x > 818
+              if x > 921
+                - Set 409
+                - Set 307
+              - Set 205
+            - Set 102
+          - Set 0
+        - Set 594
+    if x > 303
+      if y > 303
+        if y > 304
+          - N 0
+          - N -429
+        if x > 509
+          if x > 715
+            if c > 0
+              if x > 921
+                if c > 1
+                  - Set 0
+                  - Set 1023
+                - Set 1023
+              - Set 0
+            if c > 1
+              - Set 0
+              - Set 1023
+          - Set 1023
+      - Set 409

@@ -16,6 +16,7 @@ const randomLargeBtn     = document.getElementById('random-large-btn');
 const random20Btn        = document.getElementById('random20-btn');
 const random20PreviewBtn = document.getElementById('random20-preview-btn');
 const random20LargeBtn   = document.getElementById('random20-large-btn');
+const galleryBtn         = document.getElementById('gallery-btn');
 const errorMsg    = document.getElementById('error-msg');
 const compareBar  = document.getElementById('compare-bar');
 const compareImgs = document.getElementById('compare-images');
@@ -164,6 +165,10 @@ async function streamFrom(url, method, body, size = 0) {
         renderCard(gallery, item.label, item.image, false, item.program_text, item.warning);
         rendered++;
         statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
+      } else if (item.type === 'gallery_image') {
+        renderCard(gallery, item.name, item.image, false, item.program_text, null, true);
+        rendered++;
+        statusEl.textContent = `Loaded ${rendered} / ${item.total} gallery image(s).`;
       } else if (item.type === 'done') {
         statusEl.textContent = `Rendered ${rendered} images.`;
       }
@@ -191,7 +196,16 @@ const allBtns = [
   renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
   randomBtn, randomPreviewBtn, randomLargeBtn,
   random20Btn, random20PreviewBtn, random20LargeBtn,
+  galleryBtn,
 ];
+
+let galleryOpen = false;
+
+function resetGalleryToggle() {
+  gallery.classList.remove('gallery-mode');
+  galleryOpen = false;
+  galleryBtn.textContent = 'Gallery';
+}
 
 function withBusy(btn, label, fn) {
   const orig = btn.textContent;
@@ -200,6 +214,7 @@ function withBusy(btn, label, fn) {
   errorMsg.textContent = '';
   gallery.innerHTML = '';
   clearAllPins();
+  if (btn !== galleryBtn) resetGalleryToggle();
   fn().catch(e => { errorMsg.textContent = `Error: ${e.message}`; })
       .finally(() => { allBtns.forEach(b => b.disabled = false); btn.textContent = orig; });
 }
@@ -225,18 +240,37 @@ bindSizes(renderBtn, renderPreviewBtn, renderLargeBtn,
 bindSizes(renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
   'Rendering…', '/api/render', 'POST', () => ({ program_text: programEl.value, mode: 'compound20' }));
 
+function openGallery() {
+  withBusy(galleryBtn, 'Loading…', async () => {
+    gallery.classList.add('gallery-mode');
+    galleryOpen = true;
+    galleryBtn.textContent = 'Close gallery';
+    await streamFrom('/api/gallery', 'GET', null, 0);
+  });
+}
+
+galleryBtn.addEventListener('click', () => {
+  if (galleryOpen) {
+    resetGalleryToggle();
+    main();
+  } else {
+    openGallery();
+  }
+});
+
 // ── Card rendering ────────────────────────────────────────────────────────────
 
-function renderCard(container, label, payload, isOriginal, programText, warning) {
+function renderCard(container, label, payload, isOriginal, programText, warning, hideLabel) {
   const card = document.createElement('div');
   card.className = 'card';
 
   const canvas = document.createElement('canvas');
   canvas.width  = payload.width;
   canvas.height = payload.height;
-  const rgba = base64ToUint8Array(payload.rgba_b64);
   const ctx = canvas.getContext('2d');
-  ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), payload.width, payload.height), 0, 0);
+  const img = new Image();
+  img.onload = () => ctx.drawImage(img, 0, 0);
+  img.src = 'data:image/webp;base64,' + payload.webp_b64;
 
   // Click canvas to zoom; compare button pins to comparison bar
   canvas.title = 'Click to zoom';
@@ -245,16 +279,18 @@ function renderCard(container, label, payload, isOriginal, programText, warning)
   const info = document.createElement('div');
   info.className = 'info';
 
-  const lbl = document.createElement('span');
-  lbl.className = 'label';
-  lbl.textContent = label;
-  if (isOriginal) {
-    const badge = document.createElement('span');
-    badge.className = 'original-badge';
-    badge.textContent = 'original';
-    lbl.appendChild(badge);
+  if (!hideLabel) {
+    const lbl = document.createElement('span');
+    lbl.className = 'label';
+    lbl.textContent = label;
+    if (isOriginal) {
+      const badge = document.createElement('span');
+      badge.className = 'original-badge';
+      badge.textContent = 'original';
+      lbl.appendChild(badge);
+    }
+    info.appendChild(lbl);
   }
-  info.appendChild(lbl);
 
   // Download + compare buttons
   const dlRow = document.createElement('div');
@@ -264,26 +300,33 @@ function renderCard(container, label, payload, isOriginal, programText, warning)
   pngBtn.addEventListener('click', () => downloadPng(canvas, label));
   dlRow.appendChild(pngBtn);
 
-  if (payload.jxl_size > 0) {
-    const jxlBtn = makeBtn('↓ JXL');
-    const jxlSize = document.createElement('span');
-    jxlSize.style.cssText = 'font-size:0.7rem;color:#666;align-self:center;';
-    jxlSize.textContent = fmtBytes(payload.jxl_size);
-    jxlBtn.addEventListener('click', async () => {
-      jxlBtn.disabled = true;
-      jxlBtn.textContent = '…';
-      try {
-        await downloadJxl(programText ?? programEl.value, label);
-      } catch (e) {
-        alert('JXL download failed: ' + e.message);
-      } finally {
-        jxlBtn.disabled = false;
-        jxlBtn.textContent = '↓ JXL';
-      }
-    });
-    dlRow.appendChild(jxlBtn);
-    dlRow.appendChild(jxlSize);
-  }
+  const jxlBtn = makeBtn('↓ JXL');
+  const jxlSize = document.createElement('span');
+  jxlSize.style.cssText = 'font-size:0.7rem;color:#666;align-self:center;';
+  jxlSize.textContent = '…';
+  jxlBtn.addEventListener('click', async () => {
+    jxlBtn.disabled = true;
+    jxlBtn.textContent = '…';
+    try {
+      await downloadJxl(programText ?? programEl.value, label);
+    } catch (e) {
+      alert('JXL download failed: ' + e.message);
+    } finally {
+      jxlBtn.disabled = false;
+      jxlBtn.textContent = '↓ JXL';
+    }
+  });
+  dlRow.appendChild(jxlBtn);
+  dlRow.appendChild(jxlSize);
+
+  fetchJxlSize(programText ?? programEl.value).then(size => {
+    if (size > 0) {
+      jxlSize.textContent = fmtBytes(size);
+    } else {
+      jxlBtn.remove();
+      jxlSize.remove();
+    }
+  });
 
   const cmpBtn = makeBtn('⊞ compare');
   cmpBtn.title = 'Pin to comparison bar';
@@ -369,6 +412,21 @@ async function downloadJxl(programText, label) {
   URL.revokeObjectURL(a.href);
 }
 
+async function fetchJxlSize(programText) {
+  try {
+    const res = await fetch('/api/jxl_size', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ program_text: programText }),
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return data.size ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 function fmtBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -384,13 +442,6 @@ function makeBtn(text) {
   b.textContent = text;
   b.className = 'dl-btn';
   return b;
-}
-
-function base64ToUint8Array(b64) {
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
 }
 
 main();

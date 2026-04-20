@@ -1,0 +1,11 @@
+Noise 0.4 0.3 0.25 0.2 0.1 0 0 0
+Bitdepth 12
+XYB
+
+
+if c > 0
+if c > 1
+- Set -500
+- Set 500
+
+- W 2

@@ -1,0 +1,57 @@
+DeltaPalette
+Width 256
+Height 256
+
+if PrevAbsErr > 164
+  if PPrevErr > 127
+    if W-WW > -198
+      if W+N-NW > -163
+        if WGH > -185
+          - Set 2
+          - AvgN+NW +137
+        - NW +195
+      if |W| > 235
+        if N-NE > 102
+          - Select -26
+          - AvgAll -110
+        if c > -114
+          if |W| > 222
+            - AvgW+N -181
+            if W-NW > 15
+              - N +115
+              if N-NN > 206
+                - Weighted +2
+                - Select -209
+          if PPrevErr > 228
+            - AvgW+NW +23
+            if PPrevAbs > 11
+              - W -167
+              - N -188
+    if W > 225
+      - Set -89
+      - AvgW+N +143
+  if NW-N > 92
+    if N > 248
+      if W+N-NW > -234
+        if PrevErr > 145
+          - AvgN+NW -152
+          if x > 81
+            - Set -119
+            - NW -195
+        - W -37
+      - AvgW+N -215
+    if W+N-NW > 205
+      if N > 121
+        - Set 150
+        if y > 33
+          - N +99
+          if PrevAbsErr > 139
+            if WGH > 48
+              - W -97
+              - NE +152
+            - W +13
+      if PPrev > 17
+        - AvgAll -242
+        if Prev > 28
+          - N -65
+          - WW -109

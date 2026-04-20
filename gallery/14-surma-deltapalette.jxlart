@@ -1,0 +1,28 @@
+Bitdepth 8
+Width 960
+Height 960
+DeltaPalette if
+y >
+179 if
+y >
+779 -
+Set 72
+
+if y > 569
+  if x > 569
+    - Set 72
+    if x > 389
+      - Set 188
+      - Set 72
+  if y > 389
+    if x > 779
+      - Set 72
+      if x > 179
+        - Set 188
+        - Set 72
+    if x > 569
+      - Set 72
+      if x > 389
+        - Set 188
+        - Set 72
+- Set 72

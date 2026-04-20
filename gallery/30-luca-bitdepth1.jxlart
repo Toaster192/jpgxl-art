@@ -1,0 +1,16 @@
+Width 1024
+Height 1024
+Bitdepth 1
+
+if x > 0
+  if y > 0
+    if NW-N > 0
+      - Set 1
+      if NW-N > -1
+        - Set 0
+        - Set 1
+
+
+
+    - Set 0
+  - Set 1

@@ -388,54 +388,69 @@ impl ImageProgram {
     /// `render_rgba`.  Use `render_display_preview` for gallery thumbnails.
     fn render_rgba_at(&self, out_w: u32, out_h: u32) -> Vec<u8> {
         let (native_w, native_h) = (self.width, self.height);
-        let ch = self.channels;
+        let ch = self.channels as usize;
+        let ow = out_w as usize;
+        let oh = out_h as usize;
         let max_val = (1i64 << self.bitdepth) - 1;
 
         // If the tree never uses WGH or Weighted we can skip the expensive
         // WpState computation (~40 ops + 13 array reads) for every pixel.
         let use_wp = needs_wp(&self.root);
+        let same_w = out_w == native_w;
+        let same_h = out_h == native_h;
 
-        let mut rendered = vec![0i64; (out_w * out_h * ch) as usize];
-        let mut wp: Vec<WpState> = (0..ch).map(|_| WpState::new(out_w as usize)).collect();
+        // i32 is plenty for bitdepth ≤ 16 even after RCT inflation, and halves
+        // cache pressure vs. the previous i64 buffer.
+        let stride = ow * ch;
+        let mut rendered: Vec<i32> = vec![0; stride * oh];
+        let mut wp: Vec<WpState> = (0..ch).map(|_| WpState::new(ow)).collect();
 
-        let px = |buf: &[i64], px: u32, py: u32, c: u32| -> i64 {
-            buf[(py * out_w * ch + px * ch + c) as usize]
-        };
+        for y in 0..oh {
+            let row = y * stride;
+            let prev_row = row.wrapping_sub(stride);
+            let prev2_row = row.wrapping_sub(2 * stride);
+            let cy = if same_h { y as u32 } else { (y as u64 * native_h as u64 / out_h as u64) as u32 };
 
-        for y in 0..out_h {
-            for x in 0..out_w {
-                // Map output pixel → native coordinate space for tree evaluation.
-                let cx = if out_w == native_w { x } else { x * native_w / out_w };
-                let cy = if out_h == native_h { y } else { y * native_h / out_h };
+            for x in 0..ow {
+                let cx = if same_w { x as u32 } else { (x as u64 * native_w as u64 / out_w as u64) as u32 };
+                let base = row + x * ch;
+                let p_base = prev_row + x * ch;
+                let p_base_l = prev_row + x.wrapping_sub(1) * ch;
+                let p_base_r = prev_row + (x + 1) * ch;
+                let p2_base = prev2_row + x * ch;
 
                 for c in 0..ch {
-                    let left = if x > 0 {
-                        px(&rendered, x - 1, y, c)
+                    let left: i32 = if x > 0 {
+                        rendered[base - ch + c]
                     } else if y > 0 {
-                        px(&rendered, x, y - 1, c)
+                        rendered[p_base + c]
                     } else {
                         0
                     };
-                    let top      = if y > 0 { px(&rendered, x, y - 1, c) } else { left };
-                    let topleft  = if x > 0 && y > 0 { px(&rendered, x - 1, y - 1, c) } else { left };
-                    let topright = if x + 1 < out_w && y > 0 { px(&rendered, x + 1, y - 1, c) } else { top };
-                    let toptop   = if y > 1 { px(&rendered, x, y - 2, c) } else { top };
+                    let top: i32      = if y > 0 { rendered[p_base + c] } else { left };
+                    let topleft: i32  = if x > 0 && y > 0 { rendered[p_base_l + c] } else { left };
+                    let topright: i32 = if x + 1 < ow && y > 0 { rendered[p_base_r + c] } else { top };
+                    let toptop: i32   = if y > 1 { rendered[p2_base + c] } else { top };
 
                     let (wp_pred, wgh) = if use_wp {
-                        wp[c as usize].predict(
-                            x as usize, y as usize,
-                            top, left, topright, topleft, toptop,
+                        wp[c].predict(
+                            x, y,
+                            top as i64, left as i64, topright as i64, topleft as i64, toptop as i64,
                         )
                     } else {
                         (0, 0)
                     };
 
-                    let ctx = Context { x: cx, y: cy, c, n: top, w: left, nw: topleft, ne: topright, wgh, wp_pred };
+                    let ctx = Context {
+                        x: cx, y: cy, c: c as u32,
+                        n: top as i64, w: left as i64, nw: topleft as i64, ne: topright as i64,
+                        wgh, wp_pred,
+                    };
                     let val = self.eval_with_context(&ctx);
-                    rendered[(y * out_w * ch + x * ch + c) as usize] = val;
+                    rendered[base + c] = val as i32;
 
                     if use_wp {
-                        wp[c as usize].update(val, x as usize, y as usize);
+                        wp[c].update(val, x, y);
                     }
                 }
             }
@@ -444,11 +459,13 @@ impl ImageProgram {
         // Inverse RCT colour transform
         if ch >= 3 {
             if let Some(6) = self.rct {
-                for y in 0..out_h {
-                    for x in 0..out_w {
-                        let base = (y * out_w * ch + x * ch) as usize;
-                        let (y_val, co, cg) =
-                            (rendered[base], rendered[base + 1], rendered[base + 2]);
+                for y in 0..oh {
+                    let row = y * stride;
+                    for x in 0..ow {
+                        let base = row + x * ch;
+                        let y_val = rendered[base];
+                        let co    = rendered[base + 1];
+                        let cg    = rendered[base + 2];
                         let tmp = y_val - (cg >> 1);
                         let g   = cg + tmp;
                         let b   = tmp - (co >> 1);
@@ -461,15 +478,36 @@ impl ImageProgram {
             }
         }
 
-        let mut pixels = vec![255u8; (out_w * out_h * 4) as usize];
-        for y in 0..out_h {
-            for x in 0..out_w {
-                let dst = ((y * out_w + x) * 4) as usize;
-                for c in 0..ch.min(3) {
-                    let raw = rendered[(y * out_w * ch + x * ch + c) as usize];
-                    let clamped = raw.clamp(0, max_val) as f32;
-                    pixels[dst + c as usize] =
-                        ((clamped / max_val as f32) * 255.0).round() as u8;
+        let mut pixels = vec![255u8; ow * oh * 4];
+        let cmax = ch.min(3);
+        if max_val == 255 {
+            // 8-bit fast path: direct clamp to u8.
+            for y in 0..oh {
+                let src_row = y * stride;
+                let dst_row = y * ow * 4;
+                for x in 0..ow {
+                    let src = src_row + x * ch;
+                    let dst = dst_row + x * 4;
+                    for c in 0..cmax {
+                        pixels[dst + c] = rendered[src + c].clamp(0, 255) as u8;
+                    }
+                }
+            }
+        } else {
+            // Deeper bitdepth: integer scale to u8 (matches old f32 path within ±1 ULP).
+            let max_u = max_val as u32;
+            let half = max_u / 2;
+            let max_i = max_val as i32;
+            for y in 0..oh {
+                let src_row = y * stride;
+                let dst_row = y * ow * 4;
+                for x in 0..ow {
+                    let src = src_row + x * ch;
+                    let dst = dst_row + x * 4;
+                    for c in 0..cmax {
+                        let raw = rendered[src + c].clamp(0, max_i) as u32;
+                        pixels[dst + c] = ((raw * 255 + half) / max_u) as u8;
+                    }
                 }
             }
         }
@@ -518,38 +556,8 @@ impl ImageProgram {
 
     /// The original jxl-art default program.
     pub fn example_jxlart() -> Self {
-        Self::from_text(concat!(
-            "Bitdepth 8\nOrientation 7\nRCT 6\n\n",
-            "if y > 150\n",
-            "  if c > 0\n",
-            "    - N 0\n",
-            "    if x > 500\n",
-            "      if WGH > 5\n",
-            "        - AvgN+NW + 2\n",
-            "        - AvgN+NE - 2\n",
-            "      if x > 470\n",
-            "        - AvgW+NW - 2\n",
-            "        if WGH > 0\n",
-            "          - AvgN+NW + 1\n",
-            "          - AvgN+NE - 1\n",
-            "  if y > 136\n",
-            "    if c > 0\n",
-            "      if c > 1\n",
-            "        if x > 500\n",
-            "          - Set -20\n",
-            "          - Set 40\n",
-            "        if x > 501\n",
-            "          - W - 1\n",
-            "          - Set 150\n",
-            "      if x > 500\n",
-            "        - N + 5\n",
-            "        - N - 15\n",
-            "    if W > -50\n",
-            "      - Weighted - 1\n",
-            "      - Set 320\n",
-            "if W > 73\n",
-            "  - Set 105\n",
-        )).expect("example_jxlart is always valid")
+        Self::from_text(include_str!("../gallery/00-sky-and-grass.jxlart"))
+            .expect("example_jxlart is always valid")
     }
 
     /// Render in display order at full native resolution.

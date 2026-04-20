@@ -14,6 +14,9 @@
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 1rem;
     }
+    #gallery.gallery-mode {
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    }
     .card {
       background: #1e1e1e;
       border-radius: 6px;
@@ -62,7 +65,7 @@
     }
     .render-btn:hover { background: #333; }
     .render-btn:disabled { opacity: 0.5; cursor: default; }
-    #random-btn, #random20-btn {
+    #random-btn, #random20-btn, #gallery-btn {
       padding: 0.4rem 1rem;
       background: #1a2a1a;
       border: 1px solid #4a7a4a;
@@ -72,8 +75,14 @@
       font-family: monospace;
       font-size: 0.85rem;
     }
-    #random-btn:hover, #random20-btn:hover { background: #1f321f; }
-    #random-btn:disabled, #random20-btn:disabled { opacity: 0.5; cursor: default; }
+    #random-btn:hover, #random20-btn:hover, #gallery-btn:hover { background: #1f321f; }
+    #random-btn:disabled, #random20-btn:disabled, #gallery-btn:disabled { opacity: 0.5; cursor: default; }
+    #gallery-btn {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      z-index: 10;
+    }
     .btn-row {
       display: flex;
       flex-wrap: wrap;
@@ -210,6 +219,7 @@
   </style>
 </head>
 <body>
+  <button id="gallery-btn">Gallery</button>
   <h1>ArtXL — tree-based image mutation</h1>
   <p id="status">Loading…</p>
 
@@ -233,15 +243,17 @@
         <button id="render-compound-large-btn" class="preview-btn">2048px</button>
       </div>
     </div>
-    <div class="btn-group">
-      <button id="random-btn">Randomize</button>
-      <button id="random-preview-btn" class="preview-btn">320px</button>
-      <button id="random-large-btn" class="preview-btn">2048px</button>
-    </div>
-    <div class="btn-group">
-      <button id="random20-btn">Randomize 20</button>
-      <button id="random20-preview-btn" class="preview-btn">320px</button>
-      <button id="random20-large-btn" class="preview-btn">2048px</button>
+    <div class="btn-row">
+      <div class="btn-group">
+        <button id="random-btn">Randomize</button>
+        <button id="random-preview-btn" class="preview-btn">320px</button>
+        <button id="random-large-btn" class="preview-btn">2048px</button>
+      </div>
+      <div class="btn-group">
+        <button id="random20-btn">Randomize 20</button>
+        <button id="random20-preview-btn" class="preview-btn">320px</button>
+        <button id="random20-large-btn" class="preview-btn">2048px</button>
+      </div>
     </div>
     <div id="error-msg"></div>
   </div>
@@ -261,6 +273,6 @@
   <!-- Zoom modal -->
   <div id="zoom-modal"><canvas id="zoom-canvas"></canvas></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

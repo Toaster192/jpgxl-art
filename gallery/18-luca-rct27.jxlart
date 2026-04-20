@@ -1,0 +1,10 @@
+Bitdepth 8
+RCT 27
+
+if Prev > 140
+  - AvgW+NW -1
+  if W+N-NW > 0
+    if W+N-NW > 255
+      - AvgAll -127
+      - Select 8
+    - AvgW+NW 19

@@ -1,0 +1,8 @@
+Bitdepth 8
+DeltaPalette
+
+if W-WW-NW+NWW > 0
+  if W+N-NW > 0
+    - Select -225
+    - Gradient 0
+  - Gradient 1

@@ -1,0 +1,27 @@
+RCT 0
+Bitdepth 9
+Width 460
+Height 1024
+Upsample 1
+
+if y > 0
+  if N > 0
+    if NW-N > -1
+      if N-NE > 0
+        - Set 0
+        - Gradient 3
+      if N-NE > 0
+        - Select -1
+        - Gradient -5
+    if NW-N > 0
+      if N-NE > -1
+        - NW 2
+        - Set 0
+      if N-NE > -1
+        - Set 0
+        - Select 15
+  if x > 100
+    if x > 300
+      - W 0
+      - W -2
+    - W 1

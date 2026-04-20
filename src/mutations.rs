@@ -7,16 +7,42 @@ use crate::tree::{Condition, ImageProgram, Node, Op, Predictor, Var};
 
 pub fn random_program() -> ImageProgram {
     let mut rng = rand::thread_rng();
-    let root = random_node(&mut rng, 0);
+    // Force a channel split at the root so RCT-6 (YCoCg inverse) actually
+    // produces varied colour. Without this, trees that never condition on
+    // `c` emit identical Y/Co/Cg values for all channels, and the inverse
+    // transform of (V,V,V) is always yellow-green — the single biggest
+    // source of colour bias in random output.
+    let c_threshold: i64 = if rng.gen_bool(0.5) { 0 } else { 1 };
+    let root = Node::If {
+        condition: Condition { var: Var::C, op: Op::Gt, threshold: c_threshold },
+        on_true:  Box::new(random_node(&mut rng, 1)),
+        on_false: Box::new(random_node(&mut rng, 1)),
+    };
     ImageProgram {
         width: 1024,
         height: 1024,
         bitdepth: 8,
         channels: 3,
-        orientation: Some(7),
+        orientation: Some(rng.gen_range(1u32..=8)),
         rct: Some(6),
         root,
     }
+}
+
+/// Generate a random program whose 64×64 preview is not degenerate
+/// (single-colour / flat). Falls through after `MAX_TRIES` attempts so the
+/// caller is never blocked.
+pub fn random_program_non_degenerate() -> ImageProgram {
+    const MAX_TRIES: usize = 5;
+    let mut prog = random_program();
+    for _ in 0..MAX_TRIES {
+        let (rgba, _, _) = prog.render_display_at(64);
+        if !is_degenerate(&rgba) {
+            return prog;
+        }
+        prog = random_program();
+    }
+    prog
 }
 
 fn random_node(rng: &mut impl Rng, depth: usize) -> Node {
@@ -276,7 +302,9 @@ fn random_var(rng: &mut impl Rng) -> Var {
 fn random_predictor(rng: &mut impl Rng) -> Predictor {
     let offset = rng.gen_range(-32i64..=32);
     match rng.gen_range(0..7u8) {
-        0 => Predictor::Set(rng.gen_range(0i64..=255)),
+        // Signed range so Co/Cg can go negative under RCT-6 — otherwise
+        // red and blue are systematically suppressed.
+        0 => Predictor::Set(rng.gen_range(-128i64..=256)),
         1 => Predictor::N(offset),
         2 => Predictor::W(offset),
         3 => Predictor::AvgNNW(offset),
