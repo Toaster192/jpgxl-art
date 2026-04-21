@@ -245,8 +245,18 @@ function openGallery() {
     gallery.classList.add('gallery-mode');
     galleryOpen = true;
     galleryBtn.textContent = 'Close gallery';
+    addGalleryCredit(gallery);
     await streamFrom('/api/gallery', 'GET', null, 0);
   });
+}
+
+function addGalleryCredit(container) {
+  const el = document.createElement('div');
+  el.className = 'gallery-credit';
+  el.innerHTML =
+    'Programs sourced from the <a href="https://discord.com/invite/jpeg-xl-794206087879852103" ' +
+    'target="_blank" rel="noopener noreferrer">#jxl-art channel on the JPEG XL Discord</a>.';
+  container.appendChild(el);
 }
 
 galleryBtn.addEventListener('click', () => {

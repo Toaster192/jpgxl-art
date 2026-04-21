@@ -26,6 +26,8 @@ pub fn random_program() -> ImageProgram {
         channels: 3,
         orientation: Some(rng.gen_range(1u32..=8)),
         rct: Some(6),
+        extra_headers: Vec::new(),
+        splines: Vec::new(),
         root,
     }
 }
@@ -56,10 +58,12 @@ fn random_node(rng: &mut impl Rng, depth: usize) -> Node {
         // Pick threshold range appropriate to the variable.
         let var = random_var(rng);
         let threshold = match var {
-            Var::X | Var::Y => rng.gen_range(50i64..=950),
-            Var::C          => rng.gen_range(0i64..=2),
-            Var::W | Var::N => rng.gen_range(-100i64..=300),
-            Var::WGH        => rng.gen_range(0i64..=20),
+            Var::X | Var::Y    => rng.gen_range(50i64..=950),
+            Var::C             => rng.gen_range(0i64..=2),
+            Var::W | Var::N    => rng.gen_range(-100i64..=300),
+            Var::WGH           => rng.gen_range(0i64..=20),
+            // `random_var` never returns Other, but keep the match total.
+            Var::Other(_)      => rng.gen_range(0i64..=255),
         };
         Node::If {
             condition: Condition { var, op: Op::Gt, threshold },
@@ -356,6 +360,7 @@ fn collect_offsets(node: &Node) -> Vec<i64> {
             | Predictor::AvgNNW(o) | Predictor::AvgNNE(o)
             | Predictor::AvgWNW(o) | Predictor::Weighted(o) => vec![*o],
             Predictor::Set(_) => vec![],
+            Predictor::Other { .. } => vec![],
         },
     }
 }
@@ -452,6 +457,7 @@ fn tweak_all_offsets(node: &mut Node, delta: i64) {
             | Predictor::AvgNNW(o) | Predictor::AvgNNE(o)
             | Predictor::AvgWNW(o) | Predictor::Weighted(o) => *o += delta,
             Predictor::Set(_) => {}
+            Predictor::Other { .. } => {}
         },
         Node::If { on_true, on_false, .. } => {
             tweak_all_offsets(on_true, delta);

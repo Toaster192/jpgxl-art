@@ -193,6 +193,14 @@
       padding-bottom: 4px;
       margin-top: 0.75rem;
     }
+    .gallery-credit {
+      grid-column: 1 / -1;
+      font-size: 0.8rem;
+      color: #888;
+      padding: 0.25rem 0 0.5rem;
+    }
+    .gallery-credit a { color: #8ec98e; text-decoration: none; }
+    .gallery-credit a:hover { text-decoration: underline; }
     /* cursor on gallery canvases */
     .card canvas { cursor: zoom-in; }
     .card canvas.pinned { outline: 2px solid #4ec9b0; outline-offset: -2px; }
@@ -273,6 +281,6 @@
   <!-- Zoom modal -->
   <div id="zoom-modal"><canvas id="zoom-canvas"></canvas></div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

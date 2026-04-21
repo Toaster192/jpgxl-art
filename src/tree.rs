@@ -13,10 +13,14 @@ pub enum Var {
     N,
     /// Max absolute transition error from the weighted predictor state.
     WGH,
+    /// Any other jxl_from_tree-accepted variable we don't model structurally
+    /// (e.g. `NE`, `W+N-NW`, `W-WW-NW+NWW`, `Prev5`, `|W|`). Preserved
+    /// verbatim so `to_text` round-trips through `jxl_from_tree`.
+    Other(String),
 }
 
 impl Var {
-    pub fn label(&self) -> &'static str {
+    pub fn label(&self) -> &str {
         match self {
             Var::X => "x",
             Var::Y => "y",
@@ -24,6 +28,7 @@ impl Var {
             Var::W => "W",
             Var::N => "N",
             Var::WGH => "WGH",
+            Var::Other(s) => s.as_str(),
         }
     }
 }
@@ -72,6 +77,11 @@ pub enum Predictor {
     AvgWNW(i64),
     /// Libjxl weighted predictor + offset.
     Weighted(i64),
+    /// Any other jxl_from_tree-accepted leaf we don't model structurally
+    /// (`NE`, `NW`, `WW`, `NN`, `NWW`, `AvgW+N`, `AvgAll`, `Gradient`,
+    /// `Select`). `offset` stores the raw source offset text so
+    /// `to_text` re-emits verbatim (`"0"`, `"+ 5"`, `"- 12"`, `"+137"`).
+    Other { name: String, offset: String },
 }
 
 impl Predictor {
@@ -83,13 +93,14 @@ impl Predictor {
             if o == 0 { format!("{} 0", name) } else { format!("{} {}", name, fmt_offset(o)) }
         }
         match self {
-            Predictor::Set(v)    => format!("Set {}", v),
-            Predictor::N(o)      => fmt_pred("N", *o),
-            Predictor::W(o)      => fmt_pred("W", *o),
-            Predictor::AvgNNW(o) => fmt_pred("AvgN+NW", *o),
-            Predictor::AvgNNE(o) => fmt_pred("AvgN+NE", *o),
-            Predictor::AvgWNW(o) => fmt_pred("AvgW+NW", *o),
+            Predictor::Set(v)      => format!("Set {}", v),
+            Predictor::N(o)        => fmt_pred("N", *o),
+            Predictor::W(o)        => fmt_pred("W", *o),
+            Predictor::AvgNNW(o)   => fmt_pred("AvgN+NW", *o),
+            Predictor::AvgNNE(o)   => fmt_pred("AvgN+NE", *o),
+            Predictor::AvgWNW(o)   => fmt_pred("AvgW+NW", *o),
             Predictor::Weighted(o) => fmt_pred("Weighted", *o),
+            Predictor::Other { name, offset } => format!("{} {}", name, offset),
         }
     }
 }
@@ -119,6 +130,15 @@ pub struct ImageProgram {
     pub channels: u32,
     pub orientation: Option<u32>,
     pub rct: Option<u32>,
+    /// Header directives we don't model structurally, as raw lines in source
+    /// order. Examples: `"DeltaPalette"`, `"Alpha"`, `"HiddenChannel 15"`,
+    /// `"Noise 0 0 0 0 0 0 0 0"`, `"Rec2100 PQ"`.
+    #[serde(default)]
+    pub extra_headers: Vec<String>,
+    /// Verbatim `Spline … EndSpline` blocks; emitted between the header
+    /// and the body.
+    #[serde(default)]
+    pub splines: Vec<String>,
     pub root: Node,
 }
 
@@ -138,11 +158,25 @@ impl ImageProgram {
         if let Some(r) = self.rct {
             out.push_str(&format!("RCT {}\n", r));
         }
+        if self.channels != 3 {
+            out.push_str(&format!("Channels {}\n", self.channels));
+        }
         // Width/Height default to 1024×1024 in jxl-art; only emit if different.
         if self.width != 1024 || self.height != 1024 {
             out.push_str(&format!("Width {}\nHeight {}\n", self.width, self.height));
         }
+        for h in &self.extra_headers {
+            out.push_str(h);
+            out.push('\n');
+        }
         out.push('\n');
+        for s in &self.splines {
+            out.push_str(s);
+            if !s.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push('\n');
+        }
         write_node(&mut out, &self.root, 0);
         out
     }
@@ -164,50 +198,105 @@ fn write_node(out: &mut String, node: &Node, depth: usize) {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+/// Directives we don't model structurally but recognise so the header loop
+/// doesn't mistake them for body tokens. Passed through verbatim via
+/// `extra_headers`.
+const EXTRA_HEADER_KEYS: &[&str] = &[
+    "Squeeze", "DeltaPalette", "Gaborish", "XYB", "Alpha", "NotLast",
+    "EPF", "Upsample", "HiddenChannel",
+    "Rec2100", "Noise", "FramePos",
+];
+
 impl ImageProgram {
-    /// Parse a jxl-art `.xl` text program.
+    /// Parse a jxl-art text program.
     ///
-    /// The body is tokenised with `split_whitespace` (identical to
-    /// `jxl_from_tree`'s `*f >> out` tokeniser), so indentation is entirely
-    /// cosmetic and ignored.
+    /// Accepts anything `jxl_from_tree` does: unknown header directives are
+    /// preserved via `extra_headers`, `Spline … EndSpline` blocks go to
+    /// `splines`, and unknown condition variables / predictor names are
+    /// wrapped in `Var::Other` / `Predictor::Other` so they round-trip
+    /// through `to_text` unchanged.
     pub fn from_text(s: &str) -> Result<Self, String> {
-        let mut bitdepth: u32    = 8;
-        let mut width: u32       = 1024;
-        let mut height: u32      = 1024;
-        let mut channels: u32    = 3;
+        let stripped = strip_block_comments(s);
+        let all_lines: Vec<&str> = stripped.lines().collect();
+        // A leading comment like `/* title */` becomes a blank line after
+        // stripping; drop those up front so the header loop doesn't treat
+        // that blank line as the end of headers.
+        let start_idx = all_lines.iter()
+            .position(|l| !l.trim().is_empty())
+            .unwrap_or(all_lines.len());
+        let lines: &[&str] = &all_lines[start_idx..];
+
+        let mut bitdepth: u32 = 8;
+        let mut width:    u32 = 1024;
+        let mut height:   u32 = 1024;
+        let mut channels: u32 = 3;
         let mut orientation: Option<u32> = None;
-        let mut rct: Option<u32>         = None;
+        let mut rct:         Option<u32> = None;
+        let mut extra_headers: Vec<String> = Vec::new();
 
-        let lines: Vec<&str> = s.lines().collect();
-        let mut body_start = lines.len(); // default: empty body
-
+        // Phase 1: headers. Ends at first blank line OR first unknown first-token.
+        let mut body_start = lines.len();
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 body_start = i + 1;
                 break;
             }
-            let mut parts = trimmed.splitn(2, ' ');
-            let key = parts.next().unwrap_or("");
-            let val = parts.next().unwrap_or("").trim();
+            let mut it = trimmed.split_whitespace();
+            let key = it.next().unwrap_or("");
+            let rest: Vec<&str> = it.collect();
             match key {
-                "Bitdepth"    => bitdepth     = val.parse().map_err(|_| format!("bad Bitdepth: {}", val))?,
-                "Width"       => width        = val.parse().map_err(|_| format!("bad Width: {}", val))?,
-                "Height"      => height       = val.parse().map_err(|_| format!("bad Height: {}", val))?,
-                "Channels"    => channels     = val.parse().map_err(|_| format!("bad Channels: {}", val))?,
-                "Orientation" => orientation  = Some(val.parse().map_err(|_| format!("bad Orientation: {}", val))?),
-                "RCT"         => rct          = Some(val.parse().map_err(|_| format!("bad RCT: {}", val))?),
+                "Bitdepth"    => bitdepth    = parse_u32(&rest, "Bitdepth")?,
+                "Width"       => width       = parse_u32(&rest, "Width")?,
+                "Height"      => height      = parse_u32(&rest, "Height")?,
+                "Channels"    => channels    = parse_u32(&rest, "Channels")?,
+                "Orientation" => orientation = Some(parse_u32(&rest, "Orientation")?),
+                "RCT"         => rct         = Some(parse_u32(&rest, "RCT")?),
+                k if EXTRA_HEADER_KEYS.contains(&k) => {
+                    // Canonicalise whitespace: key + args joined by single spaces.
+                    let mut line = String::from(k);
+                    for a in &rest {
+                        line.push(' ');
+                        line.push_str(a);
+                    }
+                    extra_headers.push(line);
+                }
                 _ => {
+                    // Unknown first token → treat as start of body.
                     body_start = i;
                     break;
                 }
             }
         }
 
-        // Flatten all body lines into a token stream (ignoring indentation/blank lines)
-        let tokens: Vec<&str> = lines[body_start..]
-            .iter()
-            .flat_map(|line| line.split_whitespace())
+        // Phase 2: extract Spline…EndSpline blocks; the rest is tree body.
+        let mut splines: Vec<String> = Vec::new();
+        let mut body_lines: Vec<&str> = Vec::new();
+        let mut j = body_start;
+        while j < lines.len() {
+            let first_tok = lines[j].split_whitespace().next().unwrap_or("");
+            if first_tok == "Spline" {
+                let mut block: Vec<&str> = vec![lines[j]];
+                j += 1;
+                while j < lines.len() {
+                    let cur = lines[j];
+                    block.push(cur);
+                    let has_end = cur.split_whitespace().any(|t| t == "EndSpline");
+                    j += 1;
+                    if has_end {
+                        break;
+                    }
+                }
+                splines.push(block.join("\n"));
+            } else {
+                body_lines.push(lines[j]);
+                j += 1;
+            }
+        }
+
+        // Phase 3: tokenise body and walk the tree.
+        let tokens: Vec<&str> = body_lines.iter()
+            .flat_map(|l| l.split_whitespace())
             .collect();
 
         if tokens.is_empty() {
@@ -217,8 +306,42 @@ impl ImageProgram {
         let mut pos = 0usize;
         let root = parse_node(&tokens, &mut pos)?;
 
-        Ok(ImageProgram { width, height, bitdepth, channels, orientation, rct, root })
+        Ok(ImageProgram {
+            width, height, bitdepth, channels, orientation, rct,
+            extra_headers, splines, root,
+        })
     }
+}
+
+/// Remove every `/* … */` block. Unterminated comments are kept verbatim so
+/// bad input doesn't silently swallow code.
+fn strip_block_comments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    loop {
+        match rest.find("/*") {
+            Some(start) => {
+                out.push_str(&rest[..start]);
+                out.push(' '); // keep token boundary
+                let after = &rest[start + 2..];
+                match after.find("*/") {
+                    Some(end) => { rest = &after[end + 2..]; }
+                    None => {
+                        out.push_str("/*");
+                        out.push_str(after);
+                        break;
+                    }
+                }
+            }
+            None => { out.push_str(rest); break; }
+        }
+    }
+    out
+}
+
+fn parse_u32(rest: &[&str], key: &str) -> Result<u32, String> {
+    let v = rest.first().ok_or_else(|| format!("expected value after '{}'", key))?;
+    v.parse().map_err(|_| format!("bad {}: {}", key, v))
 }
 
 /// Recursively parse one node (if-branch or predict leaf) from the token stream.
@@ -242,7 +365,7 @@ fn parse_node(tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
             if op_str != ">" {
                 return Err(format!("only '>' operator is supported, got '{}'", op_str));
             }
-            let var = parse_var(var_str)?;
+            let var = parse_var(var_str);
             let threshold: i64 = thr_str.parse()
                 .map_err(|_| format!("bad threshold: '{}'", thr_str))?;
             let condition = Condition { var, op: Op::Gt, threshold };
@@ -268,54 +391,63 @@ fn parse_predictor_tokens(name: &str, tokens: &[&str], pos: &mut usize) -> Resul
         *pos += 1;
         let v: i64 = v_str.parse()
             .map_err(|_| format!("bad Set value: '{}'", v_str))?;
-        Ok(Node::Predict(Predictor::Set(v)))
-    } else {
-        // Offset formats: "0"  or  "+ n"  or  "- n"
-        let sign_or_zero = *tokens.get(*pos)
-            .ok_or_else(|| format!("expected offset after '{}'", name))?;
-        *pos += 1;
-        let offset: i64 = match sign_or_zero {
-            "0" => 0,
-            "+" => {
-                let mag = *tokens.get(*pos)
-                    .ok_or("expected magnitude after '+'")?;
-                *pos += 1;
-                mag.parse().map_err(|_| format!("bad magnitude: '{}'", mag))?
-            }
-            "-" => {
-                let mag = *tokens.get(*pos)
-                    .ok_or("expected magnitude after '-'")?;
-                *pos += 1;
-                let n: i64 = mag.parse()
-                    .map_err(|_| format!("bad magnitude: '{}'", mag))?;
-                -n
-            }
-            other => return Err(format!("expected '0', '+', or '-' for offset, got '{}'", other)),
-        };
-        Ok(Node::Predict(make_predictor(name, offset)?))
+        return Ok(Node::Predict(Predictor::Set(v)));
     }
+
+    // Offset: "0" | "+ N" | "- N" | signed-int-literal ("+137", "-195", "42")
+    let sign_or_zero = *tokens.get(*pos)
+        .ok_or_else(|| format!("expected offset after '{}'", name))?;
+
+    let (offset_val, offset_raw): (i64, String) = match sign_or_zero {
+        "0" => { *pos += 1; (0, "0".to_string()) }
+        "+" => {
+            *pos += 1;
+            let mag = *tokens.get(*pos).ok_or("expected magnitude after '+'")?;
+            *pos += 1;
+            let n: i64 = mag.parse().map_err(|_| format!("bad magnitude: '{}'", mag))?;
+            (n, format!("+ {}", mag))
+        }
+        "-" => {
+            *pos += 1;
+            let mag = *tokens.get(*pos).ok_or("expected magnitude after '-'")?;
+            *pos += 1;
+            let n: i64 = mag.parse().map_err(|_| format!("bad magnitude: '{}'", mag))?;
+            (-n, format!("- {}", mag))
+        }
+        other if is_signed_int(other) => {
+            *pos += 1;
+            let n: i64 = other.parse().map_err(|_| format!("bad offset: '{}'", other))?;
+            (n, other.to_string())
+        }
+        other => return Err(format!("expected '0', '+', '-', or signed int for offset, got '{}'", other)),
+    };
+
+    let pred = match name {
+        "N"        => Predictor::N(offset_val),
+        "W"        => Predictor::W(offset_val),
+        "AvgN+NW"  => Predictor::AvgNNW(offset_val),
+        "AvgN+NE"  => Predictor::AvgNNE(offset_val),
+        "AvgW+NW"  => Predictor::AvgWNW(offset_val),
+        "Weighted" => Predictor::Weighted(offset_val),
+        _          => Predictor::Other { name: name.to_string(), offset: offset_raw },
+    };
+    Ok(Node::Predict(pred))
 }
 
-fn parse_var(s: &str) -> Result<Var, String> {
+fn parse_var(s: &str) -> Var {
     match s {
-        "x"   => Ok(Var::X),
-        "y"   => Ok(Var::Y),
-        "c"   => Ok(Var::C),
-        "W"   => Ok(Var::W),
-        "N"   => Ok(Var::N),
-        "WGH" => Ok(Var::WGH),
-        _     => Err(format!("unknown variable: '{}'", s)),
+        "x"   => Var::X,
+        "y"   => Var::Y,
+        "c"   => Var::C,
+        "W"   => Var::W,
+        "N"   => Var::N,
+        "WGH" => Var::WGH,
+        _     => Var::Other(s.to_string()),
     }
 }
 
-fn make_predictor(name: &str, offset: i64) -> Result<Predictor, String> {
-    match name {
-        "N"        => Ok(Predictor::N(offset)),
-        "W"        => Ok(Predictor::W(offset)),
-        "AvgN+NW"  => Ok(Predictor::AvgNNW(offset)),
-        "AvgN+NE"  => Ok(Predictor::AvgNNE(offset)),
-        "AvgW+NW"  => Ok(Predictor::AvgWNW(offset)),
-        "Weighted" => Ok(Predictor::Weighted(offset)),
-        _          => Err(format!("unknown predictor: '{}'", name)),
-    }
+fn is_signed_int(s: &str) -> bool {
+    if s.is_empty() { return false; }
+    let rest = if s.starts_with('+') || s.starts_with('-') { &s[1..] } else { s };
+    !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())
 }
