@@ -100,6 +100,24 @@ pub enum Mutation {
     RemoveBranch,
     /// Replace root with its TRUE child.
     PromoteTrueBranch,
+    /// Split a random Predict leaf into a new If with two leaves.
+    /// Complements root-only `AddBranch`.
+    InsertIfAtLeaf,
+    /// Replace a random sub-tree (any node) with a freshly-generated random
+    /// subtree. More disruptive than `SwapPredictor`.
+    ReplaceSubtreeRandom,
+    // ── Program-level (headers / colour transform) ────────────────────────────
+    /// Pick a different RCT (reversible colour transform) preset.
+    /// Huge visual impact — re-interprets channel values as a different
+    /// colour space.
+    CycleRct,
+    /// Flip one gallery-relevant header flag in `extra_headers`
+    /// (Gaborish / XYB / DeltaPalette / Squeeze).
+    ToggleHeader,
+    // ── Exotic predictor (newly-reachable via the tolerant parser) ────────────
+    /// Replace a random Predict leaf with an exotic predictor:
+    /// NE / NW / NN / WW / NWW / AvgW+N / AvgAll / Gradient / Select.
+    SwapPredictorExotic,
     // ── Compound: apply multiple mutations in sequence ────────────────────────
     Chain(Vec<Mutation>),
 }
@@ -119,14 +137,19 @@ pub fn random_compounds(n: usize) -> Vec<Mutation> {
 fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
     let mag: f64 = rng.gen_range(0.10..=0.50);
     let scale = if rng.gen_bool(0.5) { mag } else { -mag };
-    match rng.gen_range(0..7u8) {
-        0 => Mutation::TweakThreshold { scale },
-        1 => Mutation::NegateThreshold,
-        2 => Mutation::SwapConditionVar,
-        3 => Mutation::SwapBranches,
-        4 => Mutation::TweakSetValue { scale },
-        5 => Mutation::SwapPredictor,
-        _ => Mutation::TweakAllOffsets { scale },
+    match rng.gen_range(0..12u8) {
+        0  => Mutation::TweakThreshold { scale },
+        1  => Mutation::NegateThreshold,
+        2  => Mutation::SwapConditionVar,
+        3  => Mutation::SwapBranches,
+        4  => Mutation::TweakSetValue { scale },
+        5  => Mutation::SwapPredictor,
+        6  => Mutation::TweakAllOffsets { scale },
+        7  => Mutation::CycleRct,
+        8  => Mutation::ToggleHeader,
+        9  => Mutation::SwapPredictorExotic,
+        10 => Mutation::InsertIfAtLeaf,
+        _  => Mutation::ReplaceSubtreeRandom,
     }
 }
 
@@ -150,6 +173,11 @@ impl Mutation {
             Mutation::AddBranch          => "Add branch".into(),
             Mutation::RemoveBranch       => "Remove branch".into(),
             Mutation::PromoteTrueBranch  => "Promote true branch".into(),
+            Mutation::InsertIfAtLeaf     => "Insert if at leaf".into(),
+            Mutation::ReplaceSubtreeRandom => "Replace subtree".into(),
+            Mutation::CycleRct           => "Cycle RCT".into(),
+            Mutation::ToggleHeader       => "Toggle header".into(),
+            Mutation::SwapPredictorExotic => "Swap predictor (exotic)".into(),
             Mutation::Chain(ms) =>
                 ms.iter().map(|m| m.label()).collect::<Vec<_>>().join(" → "),
         }
@@ -170,12 +198,18 @@ impl Mutation {
             AddBranch,
             RemoveBranch,
             PromoteTrueBranch,
+            InsertIfAtLeaf,
+            ReplaceSubtreeRandom,
             // ── Predictor / value ─────────────────────────────────────────────
             TweakSetValue { scale:  0.20 },
             TweakSetValue { scale: -0.20 },
             TweakAllOffsets { scale:  0.25 },
             TweakAllOffsets { scale: -0.25 },
             SwapPredictor,
+            SwapPredictorExotic,
+            // ── Program-level ─────────────────────────────────────────────────
+            CycleRct,
+            ToggleHeader,
             // ── Compound ──────────────────────────────────────────────────────
             Chain(vec![TweakThreshold { scale: 0.20 }, SwapPredictor]),
             Chain(vec![SwapBranches, TweakThreshold { scale: -0.30 }]),
@@ -184,6 +218,8 @@ impl Mutation {
             Chain(vec![AddBranch, SwapConditionVar, TweakThreshold { scale: 0.20 }]),
             Chain(vec![SwapConditionVar, NegateThreshold, SwapPredictor]),
             Chain(vec![TweakThreshold { scale: 0.30 }, SwapBranches, TweakAllOffsets { scale: -0.20 }]),
+            Chain(vec![CycleRct, SwapPredictorExotic]),
+            Chain(vec![ToggleHeader, TweakAllOffsets { scale: 0.30 }]),
         ]
     }
 
@@ -276,6 +312,62 @@ impl Mutation {
                     leaf => leaf,
                 };
             }
+            Mutation::InsertIfAtLeaf => {
+                let n_leaves = count_predictors(&prog.root);
+                if n_leaves == 0 { return prog; }
+                let n = rng.gen_range(0..n_leaves);
+                let condition = Condition {
+                    var: random_var(&mut rng),
+                    op: Op::Gt,
+                    threshold: rng.gen_range(0..=255),
+                };
+                let sibling = Node::Predict(random_predictor(&mut rng));
+                replace_nth_leaf(&mut prog.root, n, &mut 0, &mut |old_leaf| {
+                    Node::If {
+                        condition: condition.clone(),
+                        on_true:  Box::new(old_leaf),
+                        on_false: Box::new(sibling.clone()),
+                    }
+                });
+            }
+            Mutation::ReplaceSubtreeRandom => {
+                let n_nodes = count_all_nodes(&prog.root);
+                if n_nodes == 0 { return prog; }
+                let n = rng.gen_range(0..n_nodes);
+                let replacement = random_node(&mut rng, 1);
+                replace_nth_node(&mut prog.root, n, &mut 0,
+                    &mut |_| replacement.clone());
+            }
+            Mutation::CycleRct => {
+                // Curated set of visually-distinct RCT presets. 6 (YCoCg) is
+                // the default; skipping the current value keeps the mutation
+                // always-visible.
+                const RCTS: &[u32] = &[0, 2, 6, 10, 13, 16, 20, 27];
+                let current = prog.rct.unwrap_or(0);
+                let pick = loop {
+                    let r = RCTS[rng.gen_range(0..RCTS.len())];
+                    if r != current { break r; }
+                };
+                prog.rct = Some(pick);
+            }
+            Mutation::ToggleHeader => {
+                const TOGGLES: &[&str] = &["Gaborish", "XYB", "DeltaPalette", "Squeeze"];
+                let pick = TOGGLES[rng.gen_range(0..TOGGLES.len())];
+                let existing = prog.extra_headers.iter().position(|h|
+                    h.split_whitespace().next() == Some(pick));
+                match existing {
+                    Some(i) => { prog.extra_headers.remove(i); }
+                    None    => { prog.extra_headers.push(pick.to_string()); }
+                }
+            }
+            Mutation::SwapPredictorExotic => {
+                let n_preds = count_predictors(&prog.root);
+                if n_preds == 0 { return prog; }
+                let n = rng.gen_range(0..n_preds);
+                let replacement = random_exotic_predictor(&mut rng);
+                apply_nth_predictor(&mut prog.root, n, &mut 0,
+                    &mut |p| *p = replacement.clone());
+            }
             Mutation::Chain(_) => unreachable!(),
         }
         prog
@@ -320,6 +412,27 @@ fn random_predictor(rng: &mut impl Rng) -> Predictor {
         5 => Predictor::AvgWNW(offset),
         _ => Predictor::Weighted(offset),
     }
+}
+
+/// Predictors that `jxl_from_tree` accepts as leaves but our structured
+/// `Predictor` enum treats as opaque. Newly reachable via the tolerant
+/// parser; used by `SwapPredictorExotic`.
+///
+/// Whitelisted from the gallery corpus — some names like `NN` and `NWW`
+/// are valid condition vars but crash `jxl_from_tree` when used as leaf
+/// predictors, so they're deliberately excluded.
+fn random_exotic_predictor(rng: &mut impl Rng) -> Predictor {
+    const NAMES: &[&str] = &[
+        "NE", "NW", "WW",
+        "AvgW+N", "AvgAll", "Gradient", "Select",
+    ];
+    let name = NAMES[rng.gen_range(0..NAMES.len())];
+    let offset = match rng.gen_range(0..3u8) {
+        0 => "0".to_string(),
+        1 => format!("+ {}", rng.gen_range(1i64..=32)),
+        _ => format!("- {}", rng.gen_range(1i64..=32)),
+    };
+    Predictor::Other { name: name.to_string(), offset }
 }
 
 // ── Tree inspection ───────────────────────────────────────────────────────────
@@ -377,6 +490,14 @@ fn count_predictors(node: &Node) -> usize {
     match node {
         Node::If { on_true, on_false, .. } =>
             count_predictors(on_true) + count_predictors(on_false),
+        Node::Predict(_) => 1,
+    }
+}
+
+fn count_all_nodes(node: &Node) -> usize {
+    match node {
+        Node::If { on_true, on_false, .. } =>
+            1 + count_all_nodes(on_true) + count_all_nodes(on_false),
         Node::Predict(_) => 1,
     }
 }
@@ -446,6 +567,47 @@ fn apply_nth_set_predictor(
             *seen += 1;
         }
         Node::Predict(_) => {}
+    }
+}
+
+/// Replace the n-th Predict leaf (DFS, on_true before on_false) with
+/// `f(old_leaf)`. Used by `InsertIfAtLeaf` to split a leaf into an If.
+fn replace_nth_leaf(
+    node: &mut Node, n: usize, seen: &mut usize,
+    f: &mut dyn FnMut(Node) -> Node,
+) {
+    match node {
+        Node::If { on_true, on_false, .. } => {
+            replace_nth_leaf(on_true, n, seen, f);
+            replace_nth_leaf(on_false, n, seen, f);
+        }
+        Node::Predict(_) => {
+            if *seen == n {
+                let old = std::mem::replace(node, Node::Predict(Predictor::Set(0)));
+                *node = f(old);
+            }
+            *seen += 1;
+        }
+    }
+}
+
+/// Replace the n-th node (pre-order DFS, counting both If and Predict
+/// nodes) with `f(old)`. Used by `ReplaceSubtreeRandom`. Once a node is
+/// replaced we don't recurse into its (now-discarded) children.
+fn replace_nth_node(
+    node: &mut Node, n: usize, seen: &mut usize,
+    f: &mut dyn FnMut(Node) -> Node,
+) {
+    let idx = *seen;
+    *seen += 1;
+    if idx == n {
+        let old = std::mem::replace(node, Node::Predict(Predictor::Set(0)));
+        *node = f(old);
+        return;
+    }
+    if let Node::If { on_true, on_false, .. } = node {
+        replace_nth_node(on_true, n, seen, f);
+        replace_nth_node(on_false, n, seen, f);
     }
 }
 
