@@ -402,33 +402,31 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   pngBtn.addEventListener('click', () => downloadPng(canvas, label));
   dlRow.appendChild(pngBtn);
 
-  const jxlBtn = makeBtn('↓ JXL');
-  const jxlSize = document.createElement('span');
-  jxlSize.style.cssText = 'font-size:0.7rem;color:#666;align-self:center;';
-  jxlSize.textContent = '…';
-  jxlBtn.addEventListener('click', async () => {
-    jxlBtn.disabled = true;
-    jxlBtn.textContent = '…';
-    try {
-      await downloadJxl(programText ?? programEl.value, label);
-    } catch (e) {
-      alert('JXL download failed: ' + e.message);
-    } finally {
-      jxlBtn.disabled = false;
-      jxlBtn.textContent = '↓ JXL';
-    }
-  });
-  dlRow.appendChild(jxlBtn);
-  dlRow.appendChild(jxlSize);
-
-  fetchJxlSize(programText ?? programEl.value).then(size => {
-    if (size > 0) {
-      jxlSize.textContent = fmtBytes(size);
-    } else {
-      jxlBtn.remove();
-      jxlSize.remove();
-    }
-  });
+  // Server pre-computes jxl_size in the payload (it already has the
+  // JXL bytes from the render roundtrip), so we show it immediately
+  // without a second subprocess round-trip. 0 means the encoder
+  // couldn't produce anything — hide the JXL button in that case.
+  const jxlSizeValue = payload.jxl_size ?? 0;
+  if (jxlSizeValue > 0) {
+    const jxlBtn = makeBtn('↓ JXL');
+    const jxlSize = document.createElement('span');
+    jxlSize.style.cssText = 'font-size:0.7rem;color:#666;align-self:center;';
+    jxlSize.textContent = fmtBytes(jxlSizeValue);
+    jxlBtn.addEventListener('click', async () => {
+      jxlBtn.disabled = true;
+      jxlBtn.textContent = '…';
+      try {
+        await downloadJxl(programText ?? programEl.value, label);
+      } catch (e) {
+        alert('JXL download failed: ' + e.message);
+      } finally {
+        jxlBtn.disabled = false;
+        jxlBtn.textContent = '↓ JXL';
+      }
+    });
+    dlRow.appendChild(jxlBtn);
+    dlRow.appendChild(jxlSize);
+  }
 
   const cmpBtn = makeBtn('⊞ compare');
   cmpBtn.title = 'Pin to comparison bar';
@@ -512,21 +510,6 @@ async function downloadJxl(programText, label) {
   a.download = slugify(label) + '.jxl';
   a.click();
   URL.revokeObjectURL(a.href);
-}
-
-async function fetchJxlSize(programText) {
-  try {
-    const res = await fetch('/api/jxl_size', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ program_text: programText }),
-    });
-    if (!res.ok) return 0;
-    const data = await res.json();
-    return data.size ?? 0;
-  } catch {
-    return 0;
-  }
 }
 
 function fmtBytes(n) {

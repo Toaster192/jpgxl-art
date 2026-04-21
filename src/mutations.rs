@@ -41,7 +41,7 @@ pub fn random_program_non_degenerate() -> ImageProgram {
     let mut prog = random_program();
     for _ in 0..MAX_TRIES {
         let text = prog.to_text();
-        if let Ok((rgba, _, _)) = render::render_roundtrip(&text, 64) {
+        if let Ok((rgba, _, _, _)) = render::render_roundtrip(&text, 64) {
             if !is_degenerate(&rgba) {
                 return prog;
             }

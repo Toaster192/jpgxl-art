@@ -34,6 +34,7 @@ struct ImagePayload {
     webp_b64: String,
     width: u32,
     height: u32,
+    jxl_size: u64,
 }
 
 #[derive(Serialize)]
@@ -117,7 +118,7 @@ async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
                 tokio::task::spawn_blocking(move || {
                     let prog = random_program_non_degenerate();
                     let program_text = prog.to_text();
-                    let image = render_to_payload(&program_text, size);
+                    let image = render_to_payload(&program_text, size, encode_preview_webp);
                     (i, program_text, image)
                 })
             })
@@ -127,13 +128,13 @@ async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
             if let Ok((index, program_text, image)) = result {
                 let item = StreamItem::BatchImage { index, total: COUNT, program_text, image };
                 if let Ok(line) = serde_json::to_string(&item) {
-                    let _ = tx.send(Bytes::from(line + "\n")).await;
+                    let _ = tx.send(ndjson(line)).await;
                 }
             }
         }
 
         let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(Bytes::from(done + "\n")).await;
+        let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
@@ -216,7 +217,7 @@ async fn prerender_gallery() {
                 } else {
                     e.size.min(GALLERY_MAX_DIM)
                 };
-                let image = render_to_payload_gallery(e.program_text, size);
+                let image = render_to_payload(e.program_text, size, encode_gallery_webp);
                 let item = StreamItem::GalleryImage {
                     index,
                     total,
@@ -226,7 +227,7 @@ async fn prerender_gallery() {
                 };
                 let line = serde_json::to_string(&item)
                     .expect("gallery payload serialization cannot fail");
-                Bytes::from(line + "\n")
+                ndjson(line)
             })
         })
         .collect();
@@ -237,7 +238,7 @@ async fn prerender_gallery() {
     }
     let done = serde_json::to_string(&StreamItem::Done)
         .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-    lines.push(Bytes::from(done + "\n"));
+    lines.push(ndjson(done));
 
     let etag = compute_etag(&lines);
     let total_bytes: usize = lines.iter().map(|b| b.len()).sum();
@@ -248,6 +249,13 @@ async fn prerender_gallery() {
         start.elapsed().as_secs_f64(),
         total_bytes as f64 / (1024.0 * 1024.0),
     );
+}
+
+/// Append a trailing newline and wrap into a `Bytes` without the extra
+/// intermediate allocation `Bytes::from(s + "\n")` would cause.
+fn ndjson(mut line: String) -> Bytes {
+    line.push('\n');
+    Bytes::from(line)
 }
 
 fn compute_etag(lines: &[Bytes]) -> String {
@@ -281,7 +289,7 @@ async fn download_png(
 ) -> Result<Response, (axum::http::StatusCode, String)> {
     let text = req.program_text;
     let png = tokio::task::spawn_blocking(move || {
-        let (rgba, w, h) = render_roundtrip(&text, 0)?;
+        let (rgba, w, h, _) = render_roundtrip(&text, 0)?;
         encode_png(rgba, w, h)
     })
     .await
@@ -309,28 +317,18 @@ async fn download_jxl(
         .unwrap())
 }
 
-#[derive(Serialize)]
-struct JxlSizeResponse {
-    size: u64,
-}
-
-async fn jxl_size(Json(req): Json<RenderRequest>) -> Json<JxlSizeResponse> {
-    let text = req.program_text;
-    let size = tokio::task::spawn_blocking(move || {
-        encode_jxl_from_tree(&text).map(|v| v.len() as u64).unwrap_or(0)
-    })
-    .await
-    .unwrap_or(0);
-    Json(JxlSizeResponse { size })
-}
-
 // ── Streaming response ────────────────────────────────────────────────────────
 
+type WebpEncoder = fn(&[u8], u32, u32) -> Vec<u8>;
+
 /// Render `program_text` via the roundtrip pipeline and wrap as a payload;
-/// on failure emit the striped "unsupported" placeholder.
-fn render_to_payload(program_text: &str, size: u32) -> ImagePayload {
+/// on failure emit the striped "unsupported" placeholder. `encoder`
+/// picks between `encode_preview_webp` (lossless, for interactive
+/// render/mutation cards) and `encode_gallery_webp` (lossy, for the
+/// pre-rendered gallery).
+fn render_to_payload(program_text: &str, size: u32, encoder: WebpEncoder) -> ImagePayload {
     match render_roundtrip(program_text, size) {
-        Ok((rgba, w, h)) => to_payload(&rgba, w, h),
+        Ok((rgba, w, h, jxl_size)) => to_payload(&rgba, w, h, jxl_size, encoder),
         Err(_) => unsupported_placeholder(),
     }
 }
@@ -345,7 +343,7 @@ fn stream_single(program_text: String, size: u32) -> Response {
     tokio::spawn(async move {
         let program_text_for_payload = program_text.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            render_to_payload(&program_text, size)
+            render_to_payload(&program_text, size, encode_preview_webp)
         });
         if let Ok(image) = handle.await {
             let item = StreamItem::Original {
@@ -354,11 +352,11 @@ fn stream_single(program_text: String, size: u32) -> Response {
                 mutation_count: 0,
             };
             if let Ok(line) = serde_json::to_string(&item) {
-                let _ = tx.send(Bytes::from(line + "\n")).await;
+                let _ = tx.send(ndjson(line)).await;
             }
         }
         let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(Bytes::from(done + "\n")).await;
+        let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
@@ -380,7 +378,7 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
         let prog_orig = prog.clone();
         let orig_handle = tokio::task::spawn_blocking(move || {
             let program_text = prog_orig.to_text();
-            let image = render_to_payload(&program_text, size);
+            let image = render_to_payload(&program_text, size, encode_preview_webp);
             (program_text, image)
         });
 
@@ -398,7 +396,7 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
                         let mutated = current.apply(&p);
                         let text = mutated.to_text();
                         match render_roundtrip(&text, size) {
-                            Ok((rgba, w, h)) => {
+                            Ok((rgba, w, h, jxl_size)) => {
                                 // For compound mutations, retry with a fresh random compound
                                 // if the result is degenerate (flat / solid colour).
                                 if compound && is_degenerate(&rgba) && retries < MAX_RETRIES {
@@ -406,7 +404,11 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
                                     current = random_compounds(1).pop().unwrap();
                                     continue;
                                 }
-                                break (current.label(), text, to_payload(&rgba, w, h));
+                                break (
+                                    current.label(),
+                                    text,
+                                    to_payload(&rgba, w, h, jxl_size, encode_preview_webp),
+                                );
                             }
                             Err(_) => {
                                 // Unrenderable mutation (shouldn't normally happen, but
@@ -424,7 +426,7 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
         if let Ok((program_text, image)) = orig_handle.await {
             let item = StreamItem::Original { program_text, image, mutation_count };
             if let Ok(line) = serde_json::to_string(&item) {
-                let _ = tx.send(Bytes::from(line + "\n")).await;
+                let _ = tx.send(ndjson(line)).await;
             }
         }
 
@@ -432,13 +434,13 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
             if let Ok((label, program_text, image, compound, warning)) = result {
                 let item = StreamItem::Mutation { label, program_text, image, compound, warning };
                 if let Ok(line) = serde_json::to_string(&item) {
-                    let _ = tx.send(Bytes::from(line + "\n")).await;
+                    let _ = tx.send(ndjson(line)).await;
                 }
             }
         }
 
         let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(Bytes::from(done + "\n")).await;
+        let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
@@ -453,31 +455,19 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
 
 // ── Payload builder ───────────────────────────────────────────────────────────
 
-fn to_payload(rgba: &[u8], width: u32, height: u32) -> ImagePayload {
-    let webp = encode_preview_webp(rgba, width, height);
+fn to_payload(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    jxl_size: u64,
+    encoder: WebpEncoder,
+) -> ImagePayload {
+    let webp = encoder(rgba, width, height);
     ImagePayload {
         webp_b64: base64::engine::general_purpose::STANDARD.encode(&webp),
         width,
         height,
-    }
-}
-
-fn to_payload_gallery(rgba: &[u8], width: u32, height: u32) -> ImagePayload {
-    let webp = encode_gallery_webp(rgba, width, height);
-    ImagePayload {
-        webp_b64: base64::engine::general_purpose::STANDARD.encode(&webp),
-        width,
-        height,
-    }
-}
-
-/// Gallery-only variant of `render_to_payload` that routes through the
-/// lossy-WebP encoder. Preserves the same fall-back-to-placeholder
-/// behaviour on render failure.
-fn render_to_payload_gallery(program_text: &str, size: u32) -> ImagePayload {
-    match render_roundtrip(program_text, size) {
-        Ok((rgba, w, h)) => to_payload_gallery(&rgba, w, h),
-        Err(_) => unsupported_placeholder(),
+        jxl_size,
     }
 }
 
@@ -498,7 +488,7 @@ fn unsupported_placeholder() -> ImagePayload {
             rgba[idx + 3] = 255;
         }
     }
-    to_payload(&rgba, W, H)
+    to_payload(&rgba, W, H, 0, encode_preview_webp)
 }
 
 /// VP8L lossless WebP encoder for preview payloads (used for
@@ -548,7 +538,6 @@ async fn main() {
         .route("/api/render", post(render))
         .route("/api/download/png", post(download_png))
         .route("/api/download/jxl", post(download_jxl))
-        .route("/api/jxl_size", post(jxl_size))
         .fallback_service(ServeDir::new("static"));
 
     let addr = "0.0.0.0:3000";

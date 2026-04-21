@@ -10,10 +10,10 @@ build:
 run: build
 	cargo run --release
 
-## Full setup: build jxl_from_tree from source, then cargo build.
-## Safe to re-run — skips the libjxl build if the binary already exists.
+## Full setup: build jxl_from_tree from source. Safe to re-run — skips
+## the libjxl build if the binary already exists. The Rust project is
+## built by `make run` (or `make build`), so no second cargo build here.
 setup: $(JXL_BIN)
-	cargo build
 	@echo ""
 	@echo "Setup complete.  Start the server with:  make run"
 

@@ -5,14 +5,17 @@ use rand::Rng;
 use crate::codec;
 
 /// Encode `program_text` with `./jxl_from_tree`, decode the resulting JXL
-/// bytes via `jxl-oxide`, and return the rendered RGBA8 buffer along with
-/// its dimensions.
+/// bytes via `jxl-oxide`, and return the rendered RGBA8 buffer, its
+/// dimensions, and the encoded JXL byte length (so callers can surface
+/// the file size without re-invoking `jxl_from_tree`).
 ///
 /// `size == 0` → render at the JXL's native dimensions.
 /// Any other value → longest edge scaled to `size` px (Lanczos3 / Triangle).
-pub fn render_roundtrip(program_text: &str, size: u32) -> Result<(Vec<u8>, u32, u32), String> {
+pub fn render_roundtrip(program_text: &str, size: u32) -> Result<(Vec<u8>, u32, u32, u64), String> {
     let jxl = encode_jxl_from_tree(program_text)?;
-    codec::decode_jxl(&jxl, size)
+    let jxl_size = jxl.len() as u64;
+    let (rgba, w, h) = codec::decode_jxl(&jxl, size)?;
+    Ok((rgba, w, h, jxl_size))
 }
 
 /// Shell out to `./jxl_from_tree` with the given program text and return
