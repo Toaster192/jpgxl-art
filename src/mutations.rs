@@ -6,13 +6,35 @@ use crate::tree::{Condition, ImageProgram, Node, Op, Predictor, Var};
 
 // ── Random program generation ─────────────────────────────────────────────────
 
+/// RCT presets surfaced to the generator + `CycleRct` mutation.
+/// A curated visually-distinct subset of libjxl's full RCT set.
+pub(crate) const RCT_POOL: &[u32] = &[0, 2, 6, 10, 13, 16, 20, 27];
+
+/// Header flags surfaced to the generator + `ToggleHeader` mutation.
+/// Each one independently changes the visual character of the output.
+pub(crate) const HEADER_POOL: &[&str] = &["Gaborish", "XYB", "DeltaPalette", "Squeeze"];
+
+fn random_rct(rng: &mut impl Rng) -> u32 {
+    RCT_POOL[rng.gen_range(0..RCT_POOL.len())]
+}
+
+/// Each header in the pool is flipped on with ~30% probability. Preserves
+/// source order (Gaborish → XYB → DeltaPalette → Squeeze) for readability.
+fn random_headers(rng: &mut impl Rng) -> Vec<String> {
+    HEADER_POOL
+        .iter()
+        .filter(|_| rng.gen_bool(0.30))
+        .map(|h| h.to_string())
+        .collect()
+}
+
 pub fn random_program() -> ImageProgram {
     let mut rng = rand::thread_rng();
     // Force a channel split at the root so RCT-6 (YCoCg inverse) actually
     // produces varied colour. Without this, trees that never condition on
     // `c` emit identical Y/Co/Cg values for all channels, and the inverse
     // transform of (V,V,V) is always yellow-green — the single biggest
-    // source of colour bias in random output.
+    // source of colour bias in random output. Harmless under other RCTs.
     let c_threshold: i64 = if rng.gen_bool(0.5) { 0 } else { 1 };
     let root = Node::If {
         condition: Condition { var: Var::C, op: Op::Gt, threshold: c_threshold },
@@ -25,28 +47,37 @@ pub fn random_program() -> ImageProgram {
         bitdepth: 8,
         channels: 3,
         orientation: Some(rng.gen_range(1u32..=8)),
-        rct: Some(6),
-        extra_headers: Vec::new(),
+        rct: Some(random_rct(&mut rng)),
+        extra_headers: random_headers(&mut rng),
         splines: Vec::new(),
         root,
     }
 }
 
 /// Generate a random program whose preview is not degenerate
-/// (single-colour / flat). Falls through after `MAX_TRIES` attempts so the
-/// caller is never blocked. Uses the roundtrip renderer at 64 px so the
-/// check is accurate to what libjxl will actually produce.
+/// (single-colour / flat). Uses the roundtrip renderer at 64 px so the
+/// check is accurate to what libjxl will actually produce. On retry we
+/// first just re-roll the cheap program-level knobs (RCT + headers) that
+/// often pull a flat result back into colour; only after several failures
+/// do we regenerate the tree from scratch.
 pub fn random_program_non_degenerate() -> ImageProgram {
-    const MAX_TRIES: usize = 5;
+    const MAX_TRIES: usize = 10;
+    const CHEAP_REROLLS: usize = MAX_TRIES - 3;
     let mut prog = random_program();
-    for _ in 0..MAX_TRIES {
+    for attempt in 0..MAX_TRIES {
         let text = prog.to_text();
         if let Ok((rgba, _, _, _)) = render::render_roundtrip(&text, 64) {
             if !is_degenerate(&rgba) {
                 return prog;
             }
         }
-        prog = random_program();
+        let mut rng = rand::thread_rng();
+        if attempt < CHEAP_REROLLS {
+            prog.rct = Some(random_rct(&mut rng));
+            prog.extra_headers = random_headers(&mut rng);
+        } else {
+            prog = random_program();
+        }
     }
     prog
 }
@@ -62,8 +93,7 @@ fn random_node(rng: &mut impl Rng, depth: usize) -> Node {
             Var::C             => rng.gen_range(0i64..=2),
             Var::W | Var::N    => rng.gen_range(-100i64..=300),
             Var::WGH           => rng.gen_range(0i64..=20),
-            // `random_var` never returns Other, but keep the match total.
-            Var::Other(_)      => rng.gen_range(0i64..=255),
+            Var::Other(_)      => unreachable!("random_var doesn't emit Var::Other"),
         };
         Node::If {
             condition: Condition { var, op: Op::Gt, threshold },
@@ -339,20 +369,16 @@ impl Mutation {
                     &mut |_| replacement.clone());
             }
             Mutation::CycleRct => {
-                // Curated set of visually-distinct RCT presets. 6 (YCoCg) is
-                // the default; skipping the current value keeps the mutation
-                // always-visible.
-                const RCTS: &[u32] = &[0, 2, 6, 10, 13, 16, 20, 27];
+                // Skip the current value so the mutation is always-visible.
                 let current = prog.rct.unwrap_or(0);
                 let pick = loop {
-                    let r = RCTS[rng.gen_range(0..RCTS.len())];
+                    let r = RCT_POOL[rng.gen_range(0..RCT_POOL.len())];
                     if r != current { break r; }
                 };
                 prog.rct = Some(pick);
             }
             Mutation::ToggleHeader => {
-                const TOGGLES: &[&str] = &["Gaborish", "XYB", "DeltaPalette", "Squeeze"];
-                let pick = TOGGLES[rng.gen_range(0..TOGGLES.len())];
+                let pick = HEADER_POOL[rng.gen_range(0..HEADER_POOL.len())];
                 let existing = prog.extra_headers.iter().position(|h|
                     h.split_whitespace().next() == Some(pick));
                 match existing {
@@ -393,6 +419,9 @@ pub fn is_degenerate(rgba: &[u8]) -> bool {
 // ── Random primitives ─────────────────────────────────────────────────────────
 
 fn random_var(rng: &mut impl Rng) -> Var {
+    // Bare exotic neighbour names (NE/NW/NN/NWW/WW) are *not* in libjxl's
+    // condition-property whitelist — they're only valid inside composites
+    // like `N-NE` / `W+N-NW`. Keep this to the structured set.
     match rng.gen_range(0..6u8) {
         0 => Var::X, 1 => Var::Y, 2 => Var::C,
         3 => Var::W, 4 => Var::N, _ => Var::WGH,
@@ -400,6 +429,10 @@ fn random_var(rng: &mut impl Rng) -> Var {
 }
 
 fn random_predictor(rng: &mut impl Rng) -> Predictor {
+    // 20% exotic leaf predictor for extra visual range.
+    if rng.gen_bool(0.20) {
+        return random_exotic_predictor(rng);
+    }
     let offset = rng.gen_range(-32i64..=32);
     match rng.gen_range(0..7u8) {
         // Signed range so Co/Cg can go negative under RCT-6 — otherwise

@@ -78,9 +78,11 @@ pub enum Predictor {
     /// Libjxl weighted predictor + offset.
     Weighted(i64),
     /// Any other jxl_from_tree-accepted leaf we don't model structurally
-    /// (`NE`, `NW`, `WW`, `NN`, `NWW`, `AvgW+N`, `AvgAll`, `Gradient`,
-    /// `Select`). `offset` stores the raw source offset text so
-    /// `to_text` re-emits verbatim (`"0"`, `"+ 5"`, `"- 12"`, `"+137"`).
+    /// (`NE`, `NW`, `WW`, `AvgW+N`, `AvgAll`, `Gradient`, `Select`).
+    /// `NN` and `NWW` are valid inside *condition* composites but crash
+    /// as standalone leaf predictors, so they're excluded here.
+    /// `offset` stores the raw source offset text so `to_text` re-emits
+    /// verbatim (`"0"`, `"+ 5"`, `"- 12"`, `"+137"`).
     Other { name: String, offset: String },
 }
 
