@@ -224,6 +224,21 @@
       box-shadow: 0 0 40px rgba(0,0,0,0.8);
       cursor: zoom-out;
     }
+    #zoom-status {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      color: #bbb;
+      background: rgba(0,0,0,0.55);
+      padding: 4px 10px;
+      border-radius: 3px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    #zoom-status.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -279,8 +294,11 @@
   </div>
 
   <!-- Zoom modal -->
-  <div id="zoom-modal"><canvas id="zoom-canvas"></canvas></div>
+  <div id="zoom-modal">
+    <canvas id="zoom-canvas"></canvas>
+    <div id="zoom-status"></div>
+  </div>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

@@ -23,20 +23,106 @@ const compareImgs = document.getElementById('compare-images');
 const compareClear = document.getElementById('compare-clear');
 const zoomModal   = document.getElementById('zoom-modal');
 const zoomCanvas  = document.getElementById('zoom-canvas');
+const zoomStatus  = document.getElementById('zoom-status');
 
 // ── Zoom modal ─────────────────────────────────────────────────────────────────
 
-function showZoom(srcCanvas) {
+// AbortController for the in-flight full-res render, if any. Cancelled on
+// modal close or when a new zoom starts, so we don't waste render time on
+// an image the user can no longer see.
+let zoomAbort = null;
+
+function setZoomStatus(text) {
+  zoomStatus.textContent = text || '';
+  zoomStatus.classList.toggle('show', !!text);
+}
+
+function closeZoom() {
+  if (zoomAbort) { zoomAbort.abort(); zoomAbort = null; }
+  zoomModal.classList.remove('open');
+  setZoomStatus('');
+}
+
+function showZoom(srcCanvas, programText) {
+  // Supersede any previous full-res upgrade in flight.
+  if (zoomAbort) { zoomAbort.abort(); zoomAbort = null; }
+
   zoomCanvas.width  = srcCanvas.width;
   zoomCanvas.height = srcCanvas.height;
   zoomCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
   zoomModal.classList.add('open');
+  setZoomStatus('');
+
+  // Only gallery cards pass programText through — they're the ones whose
+  // thumbnails have been downsampled to GALLERY_MAX_DIM and benefit from
+  // an on-demand native-resolution render.
+  if (!programText) return;
+
+  const ctrl = new AbortController();
+  zoomAbort = ctrl;
+  setZoomStatus('loading full resolution…');
+
+  fetchSingleRender(programText, ctrl.signal)
+    .then(payload => {
+      if (zoomAbort !== ctrl || !zoomModal.classList.contains('open')) return;
+      // Don't swap if the native render isn't actually larger.
+      if (payload.width <= srcCanvas.width && payload.height <= srcCanvas.height) {
+        setZoomStatus('');
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        if (zoomAbort !== ctrl || !zoomModal.classList.contains('open')) return;
+        zoomCanvas.width = payload.width;
+        zoomCanvas.height = payload.height;
+        zoomCanvas.getContext('2d').drawImage(img, 0, 0);
+        setZoomStatus('');
+        zoomAbort = null;
+      };
+      img.src = 'data:image/webp;base64,' + payload.webp_b64;
+    })
+    .catch(err => {
+      if (err.name === 'AbortError' || zoomAbort !== ctrl) return;
+      setZoomStatus('full-res unavailable');
+    });
 }
 
-zoomModal.addEventListener('click', () => zoomModal.classList.remove('open'));
+async function fetchSingleRender(programText, signal) {
+  const res = await fetch('/api/render', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ program_text: programText, mode: 'single', size: 0 }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let item;
+      try { item = JSON.parse(line); } catch { continue; }
+      if (item.type === 'original') {
+        // Release the rest of the stream; we only need the first payload.
+        reader.cancel().catch(() => {});
+        return item.image;
+      }
+    }
+  }
+  throw new Error('no original in single-render stream');
+}
+
+zoomModal.addEventListener('click', closeZoom);
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') zoomModal.classList.remove('open');
+  if (e.key === 'Escape') closeZoom();
 });
 
 // ── Comparison state ──────────────────────────────────────────────────────────
@@ -58,8 +144,9 @@ function togglePin(srcCanvas, label) {
   c.width  = srcCanvas.width;
   c.height = srcCanvas.height;
   c.getContext('2d').drawImage(srcCanvas, 0, 0);
+  c._fullResProgram = srcCanvas._fullResProgram || null;
   c.title = 'Click to zoom';
-  c.addEventListener('click', () => showZoom(c));
+  c.addEventListener('click', () => showZoom(c, c._fullResProgram));
 
   const lbl = document.createElement('div');
   lbl.className = 'cmp-label';
@@ -282,9 +369,14 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   img.onload = () => ctx.drawImage(img, 0, 0);
   img.src = 'data:image/webp;base64,' + payload.webp_b64;
 
-  // Click canvas to zoom; compare button pins to comparison bar
+  // Gallery thumbnails are downsampled server-side, so on zoom we kick off
+  // a native-resolution render in the background. `hideLabel` is the
+  // gallery-only flag — mutation / randomize cards keep the simple zoom.
+  // Stash the program text on the canvas so pinned copies in the compare
+  // bar can also trigger the upgrade.
+  canvas._fullResProgram = hideLabel ? programText : null;
   canvas.title = 'Click to zoom';
-  canvas.addEventListener('click', () => showZoom(canvas));
+  canvas.addEventListener('click', () => showZoom(canvas, canvas._fullResProgram));
 
   const info = document.createElement('div');
   info.className = 'info';
