@@ -15,7 +15,7 @@ use axum::{
     Json, Router,
 };
 use base64::Engine;
-use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
+use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::hash::{Hash, Hasher};
@@ -31,6 +31,12 @@ const GALLERY_MAX_DIM: u32 = 768;
 /// high-entropy so even lossless VP8L only shaves ~10%; at q=75 VP8
 /// lossy stays visually clean at card size while shrinking ~8×.
 const GALLERY_WEBP_QUALITY: f32 = 75.0;
+
+/// Cap on concurrent `spawn_blocking` render tasks. Each native-res JXL
+/// decode owns ~w*h*7 bytes while Lanczos resize runs (2160×3840 entries
+/// like `bg-024-erosion-and-shadows` peak around ~65MB). 8 keeps peak
+/// under ~600MB during prerender while saturating a typical 8-core box.
+const RENDER_CONCURRENCY: usize = 8;
 
 use mutations::{is_degenerate, random_compounds, random_program_non_degenerate, Mutation};
 use render::{encode_jxl_from_tree, render_roundtrip};
@@ -122,16 +128,17 @@ async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
-        let mut unordered: FuturesUnordered<_> = (0..COUNT)
-            .map(|i| {
+        let mut unordered = stream::iter(0..COUNT)
+            .map(|i| async move {
                 tokio::task::spawn_blocking(move || {
                     let prog = random_program_non_degenerate();
                     let program_text = prog.to_text();
                     let image = render_to_payload(&program_text, size, encode_preview_webp);
                     (i, program_text, image)
                 })
+                .await
             })
-            .collect();
+            .buffer_unordered(RENDER_CONCURRENCY);
 
         while let Some(result) = unordered.next().await {
             if let Ok((index, program_text, image)) = result {
@@ -224,10 +231,8 @@ async fn prerender_gallery() {
     let start = std::time::Instant::now();
     println!("Pre-rendering gallery ({total} entries)…");
 
-    let mut tasks: FuturesOrdered<_> = entries
-        .into_iter()
-        .enumerate()
-        .map(|(index, e)| {
+    let mut tasks = stream::iter(entries.into_iter().enumerate())
+        .map(|(index, e)| async move {
             tokio::task::spawn_blocking(move || {
                 let size = if e.size == 0 {
                     GALLERY_MAX_DIM
@@ -246,12 +251,14 @@ async fn prerender_gallery() {
                     .expect("gallery payload serialization cannot fail");
                 ndjson(line)
             })
+            .await
+            .expect("gallery prerender task panicked")
         })
-        .collect();
+        .buffered(RENDER_CONCURRENCY);
 
     let mut lines: Vec<Bytes> = Vec::with_capacity(total + 1);
-    while let Some(result) = tasks.next().await {
-        lines.push(result.expect("gallery prerender task panicked"));
+    while let Some(line) = tasks.next().await {
+        lines.push(line);
     }
     let done =
         serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
@@ -408,46 +415,48 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
             (program_text, image)
         });
 
-        let mut ordered: FuturesOrdered<_> = mutations
-            .into_iter()
+        let mut ordered = stream::iter(mutations.into_iter())
             .map(|m| {
                 let compound = m.is_compound();
                 let p = prog.clone();
-                tokio::task::spawn_blocking(move || {
-                    const MAX_RETRIES: usize = 5;
-                    let mut current = m;
-                    let mut retries = 0;
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        const MAX_RETRIES: usize = 5;
+                        let mut current = m;
+                        let mut retries = 0;
 
-                    let (label, text, image) = loop {
-                        let mutated = current.apply(&p);
-                        let text = mutated.to_text();
-                        match render_roundtrip(&text, size) {
-                            Ok((rgba, w, h, jxl_size)) => {
-                                // For compound mutations, retry with a fresh random compound
-                                // if the result is degenerate (flat / solid colour).
-                                if compound && is_degenerate(&rgba) && retries < MAX_RETRIES {
-                                    retries += 1;
-                                    current = random_compounds(1).pop().unwrap();
-                                    continue;
+                        let (label, text, image) = loop {
+                            let mutated = current.apply(&p);
+                            let text = mutated.to_text();
+                            match render_roundtrip(&text, size) {
+                                Ok((rgba, w, h, jxl_size)) => {
+                                    // For compound mutations, retry with a fresh random compound
+                                    // if the result is degenerate (flat / solid colour).
+                                    if compound && is_degenerate(&rgba) && retries < MAX_RETRIES {
+                                        retries += 1;
+                                        current = random_compounds(1).pop().unwrap();
+                                        continue;
+                                    }
+                                    break (
+                                        current.label(),
+                                        text,
+                                        to_payload(&rgba, w, h, jxl_size, encode_preview_webp),
+                                    );
                                 }
-                                break (
-                                    current.label(),
-                                    text,
-                                    to_payload(&rgba, w, h, jxl_size, encode_preview_webp),
-                                );
+                                Err(_) => {
+                                    // Unrenderable mutation (shouldn't normally happen, but
+                                    // fall back to the placeholder so the stream keeps flowing).
+                                    break (current.label(), text, unsupported_placeholder());
+                                }
                             }
-                            Err(_) => {
-                                // Unrenderable mutation (shouldn't normally happen, but
-                                // fall back to the placeholder so the stream keeps flowing).
-                                break (current.label(), text, unsupported_placeholder());
-                            }
-                        }
-                    };
+                        };
 
-                    (label, text, image, compound, None::<String>)
-                })
+                        (label, text, image, compound, None::<String>)
+                    })
+                    .await
+                }
             })
-            .collect();
+            .buffered(RENDER_CONCURRENCY);
 
         if let Ok((program_text, image)) = orig_handle.await {
             let item = StreamItem::Original {
@@ -565,22 +574,34 @@ fn encode_png(rgba: Vec<u8>, width: u32, height: u32) -> Result<Vec<u8>, String>
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() {
-    prerender_gallery().await;
+fn main() {
+    // Tokio's default blocking pool is 512 threads. Each gets its own glibc
+    // malloc arena, which holds onto freed memory indefinitely (per-thread
+    // arena fragmentation). Since our per-request blocking work is capped at
+    // RENDER_CONCURRENCY, there's no reason to let hundreds of idle threads
+    // hoard multi-GB of returned-but-not-returned-to-OS allocations.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .max_blocking_threads(RENDER_CONCURRENCY * 2)
+        .build()
+        .expect("build tokio runtime");
 
-    let app = Router::new()
-        .route("/api/generate", get(generate))
-        .route("/api/random", get(randomize))
-        .route("/api/random/batch", get(random_batch))
-        .route("/api/gallery", get(gallery_handler))
-        .route("/api/render", post(render))
-        .route("/api/download/png", post(download_png))
-        .route("/api/download/jxl", post(download_jxl))
-        .fallback_service(ServeDir::new("static"));
+    runtime.block_on(async {
+        prerender_gallery().await;
 
-    let addr = "0.0.0.0:3000";
-    println!("Listening on http://{}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+        let app = Router::new()
+            .route("/api/generate", get(generate))
+            .route("/api/random", get(randomize))
+            .route("/api/random/batch", get(random_batch))
+            .route("/api/gallery", get(gallery_handler))
+            .route("/api/render", post(render))
+            .route("/api/download/png", post(download_png))
+            .route("/api/download/jxl", post(download_jxl))
+            .fallback_service(ServeDir::new("static"));
+
+        let addr = "0.0.0.0:3000";
+        println!("Listening on http://{}", addr);
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
 }
