@@ -1,0 +1,14 @@
+RCT 19
+Bitdepth 5
+Squeeze
+Width 512
+Height 1024
+
+
+if c > 1
+  if W+N-NW > 1
+    if N > 0
+      - Select -3
+      - AvgN+NW -1
+    - Gradient 2
+  - W 1

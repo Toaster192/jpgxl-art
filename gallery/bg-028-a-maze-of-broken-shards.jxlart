@@ -1,0 +1,16 @@
+Bitdepth 5
+RCT 6
+Width 512
+Height 1024
+Upsample 1
+
+if c > 0
+  if Prev > 9
+    - Set -10
+    - Set 10
+  if W > 27
+    - AvgW+NW -30
+    if N-NE > 0
+      - AvgW+NW -4
+      - AvgW+NW 4
+- Set 0

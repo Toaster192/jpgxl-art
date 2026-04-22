@@ -1,0 +1,9 @@
+Bitdepth 8
+DeltaPalette
+Squeeze
+
+if c > 1
+- NW 1
+- NW -1
+
+

@@ -1,0 +1,53 @@
+Bitdepth 1
+
+if y > 496
+  if y > 528
+    if x > 496
+      if x > 528
+        if x > 600
+          if y > 768
+            if y > 800
+              - Set 0
+              - Set 1
+            if x > 666
+              if x > 698
+                - Set 0
+                - Set 1
+              - Set 0
+          - Set 0
+        - Set 1
+      if y > 768
+        - Set 0
+        if x > 154
+          if x > 186
+            if x > 325
+              if x > 357
+                - Set 0
+                - Set 1
+              - Set 0
+            - Set 1
+          - Set 0
+    - Set 1
+  if x > 496
+    if x > 528
+      if x > 666
+        if x > 698
+          if x > 837
+            if x > 869
+              - Set 0
+              if y > 384
+                - Set 1
+                - Set 0
+            - Set 0
+          if y > 256
+            - Set 1
+            - Set 0
+        - Set 0
+      - Set 1
+    if x > 154
+      if x > 186
+        - Set 0
+        if y > 256
+          - Set 1
+          - Set 0
+      - Set 0

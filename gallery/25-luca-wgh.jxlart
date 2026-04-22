@@ -1,7 +1,0 @@
-DeltaPalette
-
-if NW-N > -1
-  if WGH > 0
-    - W 128
-    - N -255
-  - AvgW+N 128

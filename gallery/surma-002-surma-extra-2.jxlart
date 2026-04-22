@@ -1,0 +1,11 @@
+RCT 29
+Upsample 2
+Bitdepth 10
+
+if c > 0
+  if Prev > 125
+    - NE -2
+    - W 1
+  if W > 0
+    - AvgN+NW -1
+    - Set 438

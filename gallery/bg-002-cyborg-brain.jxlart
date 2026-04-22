@@ -1,0 +1,7 @@
+Squeeze
+
+if c > 1
+  if W > 0
+    - AvgW+N - 1
+    - AvgW+N + 31
+  - W 5

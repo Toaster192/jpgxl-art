@@ -1,0 +1,13 @@
+Bitdepth 10
+/*
+Rec2100 PQ
+*/
+Gaborish
+EPF 2
+XYB
+XYBFactors 4096 512 256
+Upsample 1
+
+if W+N-NW > 0
+  - NW -1
+  - Weighted 127

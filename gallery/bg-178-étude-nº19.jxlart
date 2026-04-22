@@ -1,0 +1,10 @@
+Bitdepth 10
+DeltaPalette 
+
+
+if W-NW > 0
+  - Select -2
+  if NW-N > 0
+    - NW -2
+    - W -2
+  

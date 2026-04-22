@@ -1,0 +1,16 @@
+Bitdepth 10
+RCT 13
+
+if c > 0
+  if x > 0
+    - W 1
+    - W -1
+  if W > 0
+    if y > 0
+      if W-WW-NW+NWW > 0
+        if W > 1023
+          - AvgN+NW -8
+          - Gradient 1
+        - AvgN+NE -8
+      - W -50
+    - NW 1023

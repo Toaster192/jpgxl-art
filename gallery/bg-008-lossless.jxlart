@@ -1,0 +1,15 @@
+Bitdepth 11
+Width 1024
+Height 1024
+RCT 19
+FramePos -128 -128
+
+if c > 0
+  if PrevErr > 0
+    - Gradient -1
+    - AvgAll 2
+  if W-WW > 11
+    - W 11
+    if N-NE > -0
+      - Weighted 7
+      - Weighted -6

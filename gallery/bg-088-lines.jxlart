@@ -1,0 +1,9 @@
+Bitdepth 8
+RCT 19
+Orientation 4
+
+if W+N-NW > -45
+  if W+N-NW > 250
+    - Select -253
+    - Select 2
+  - Select 240

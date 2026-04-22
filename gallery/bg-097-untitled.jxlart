@@ -1,0 +1,14 @@
+RCT 5
+Bitdepth 10
+Orientation 4
+FramePos -450 -180
+
+if c > 1
+  if PrevErr > -4
+    if PrevErr > -2
+      - NE -1
+      - NW -12
+    - W 10
+  if W > 0
+    - AvgW+NW -1
+    - Set 100

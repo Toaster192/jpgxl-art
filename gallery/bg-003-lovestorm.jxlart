@@ -1,0 +1,12 @@
+Squeeze
+Bitdepth 5
+
+if c > 1
+  if W-WW-NW+NWW > 2
+    - Weighted -1
+    if W > 0
+      if |N| > 0
+        - Weighted -3
+        - W - 1
+      - Weighted 9
+  - Set 0

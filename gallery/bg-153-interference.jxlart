@@ -1,0 +1,8 @@
+Height 1024
+Width 1024
+RCT 13
+Bitdepth 9
+
+if W+N-NW > 0
+  - AvgN+NE -3
+  - AvgW+N 333

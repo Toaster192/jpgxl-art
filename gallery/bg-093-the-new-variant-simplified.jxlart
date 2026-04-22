@@ -1,0 +1,16 @@
+Bitdepth 10
+RCT 6
+Upsample 1
+Orientation 1
+Width 540
+Height 960
+
+if c > 1
+  - Set -32
+  if c > 0
+    - Set -128
+    if W+N-NW > -8
+      if N-NE > 0
+        - AvgN+NE -4
+        - AvgN+NW -3
+      - NE 444

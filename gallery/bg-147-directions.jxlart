@@ -1,0 +1,15 @@
+Height 512
+Width 512
+Bitdepth 8
+DeltaPalette
+if x > 250
+if y > 250
+- Gradient -4
+- Gradient -10
+if y > 0
+if y > 200
+- AvgAll +2
+- N +1
+if W > 200
+- Set 0
+- Gradient +1

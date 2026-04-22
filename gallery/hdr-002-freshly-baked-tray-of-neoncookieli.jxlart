@@ -1,0 +1,12 @@
+Rec2100 PQ
+Squeeze
+
+if c > 0
+  if c > 1
+    if y > 0
+      - N -20
+      - Set 4095
+    if x > 0
+      - W 10
+      - Set -4096
+  - N 1

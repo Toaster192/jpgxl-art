@@ -89,18 +89,26 @@ pub enum Predictor {
 impl Predictor {
     pub fn label(&self) -> String {
         fn fmt_offset(o: i64) -> String {
-            if o >= 0 { format!("+ {}", o) } else { format!("- {}", o.abs()) }
+            if o >= 0 {
+                format!("+ {}", o)
+            } else {
+                format!("- {}", o.abs())
+            }
         }
         fn fmt_pred(name: &str, o: i64) -> String {
-            if o == 0 { format!("{} 0", name) } else { format!("{} {}", name, fmt_offset(o)) }
+            if o == 0 {
+                format!("{} 0", name)
+            } else {
+                format!("{} {}", name, fmt_offset(o))
+            }
         }
         match self {
-            Predictor::Set(v)      => format!("Set {}", v),
-            Predictor::N(o)        => fmt_pred("N", *o),
-            Predictor::W(o)        => fmt_pred("W", *o),
-            Predictor::AvgNNW(o)   => fmt_pred("AvgN+NW", *o),
-            Predictor::AvgNNE(o)   => fmt_pred("AvgN+NE", *o),
-            Predictor::AvgWNW(o)   => fmt_pred("AvgW+NW", *o),
+            Predictor::Set(v) => format!("Set {}", v),
+            Predictor::N(o) => fmt_pred("N", *o),
+            Predictor::W(o) => fmt_pred("W", *o),
+            Predictor::AvgNNW(o) => fmt_pred("AvgN+NW", *o),
+            Predictor::AvgNNE(o) => fmt_pred("AvgN+NE", *o),
+            Predictor::AvgWNW(o) => fmt_pred("AvgW+NW", *o),
             Predictor::Weighted(o) => fmt_pred("Weighted", *o),
             Predictor::Other { name, offset } => format!("{} {}", name, offset),
         }
@@ -116,7 +124,7 @@ impl Predictor {
 pub enum Node {
     If {
         condition: Condition,
-        on_true:  Box<Node>,
+        on_true: Box<Node>,
         on_false: Box<Node>,
     },
     Predict(Predictor),
@@ -187,9 +195,13 @@ impl ImageProgram {
 fn write_node(out: &mut String, node: &Node, depth: usize) {
     let indent = "  ".repeat(depth);
     match node {
-        Node::If { condition, on_true, on_false } => {
+        Node::If {
+            condition,
+            on_true,
+            on_false,
+        } => {
             out.push_str(&format!("{}if {}\n", indent, condition.label()));
-            write_node(out, on_true,  depth + 1);
+            write_node(out, on_true, depth + 1);
             write_node(out, on_false, depth + 1);
         }
         Node::Predict(pred) => {
@@ -204,9 +216,18 @@ fn write_node(out: &mut String, node: &Node, depth: usize) {
 /// doesn't mistake them for body tokens. Passed through verbatim via
 /// `extra_headers`.
 const EXTRA_HEADER_KEYS: &[&str] = &[
-    "Squeeze", "DeltaPalette", "Gaborish", "XYB", "Alpha", "NotLast",
-    "EPF", "Upsample", "HiddenChannel",
-    "Rec2100", "Noise", "FramePos",
+    "Squeeze",
+    "DeltaPalette",
+    "Gaborish",
+    "XYB",
+    "Alpha",
+    "NotLast",
+    "EPF",
+    "Upsample",
+    "HiddenChannel",
+    "Rec2100",
+    "Noise",
+    "FramePos",
 ];
 
 impl ImageProgram {
@@ -223,17 +244,18 @@ impl ImageProgram {
         // A leading comment like `/* title */` becomes a blank line after
         // stripping; drop those up front so the header loop doesn't treat
         // that blank line as the end of headers.
-        let start_idx = all_lines.iter()
+        let start_idx = all_lines
+            .iter()
             .position(|l| !l.trim().is_empty())
             .unwrap_or(all_lines.len());
         let lines: &[&str] = &all_lines[start_idx..];
 
         let mut bitdepth: u32 = 8;
-        let mut width:    u32 = 1024;
-        let mut height:   u32 = 1024;
+        let mut width: u32 = 1024;
+        let mut height: u32 = 1024;
         let mut channels: u32 = 3;
         let mut orientation: Option<u32> = None;
-        let mut rct:         Option<u32> = None;
+        let mut rct: Option<u32> = None;
         let mut extra_headers: Vec<String> = Vec::new();
 
         // Phase 1: headers. Ends at first blank line OR first unknown first-token.
@@ -248,12 +270,12 @@ impl ImageProgram {
             let key = it.next().unwrap_or("");
             let rest: Vec<&str> = it.collect();
             match key {
-                "Bitdepth"    => bitdepth    = parse_u32(&rest, "Bitdepth")?,
-                "Width"       => width       = parse_u32(&rest, "Width")?,
-                "Height"      => height      = parse_u32(&rest, "Height")?,
-                "Channels"    => channels    = parse_u32(&rest, "Channels")?,
+                "Bitdepth" => bitdepth = parse_u32(&rest, "Bitdepth")?,
+                "Width" => width = parse_u32(&rest, "Width")?,
+                "Height" => height = parse_u32(&rest, "Height")?,
+                "Channels" => channels = parse_u32(&rest, "Channels")?,
                 "Orientation" => orientation = Some(parse_u32(&rest, "Orientation")?),
-                "RCT"         => rct         = Some(parse_u32(&rest, "RCT")?),
+                "RCT" => rct = Some(parse_u32(&rest, "RCT")?),
                 k if EXTRA_HEADER_KEYS.contains(&k) => {
                     // Canonicalise whitespace: key + args joined by single spaces.
                     let mut line = String::from(k);
@@ -297,7 +319,8 @@ impl ImageProgram {
         }
 
         // Phase 3: tokenise body and walk the tree.
-        let tokens: Vec<&str> = body_lines.iter()
+        let tokens: Vec<&str> = body_lines
+            .iter()
             .flat_map(|l| l.split_whitespace())
             .collect();
 
@@ -309,8 +332,15 @@ impl ImageProgram {
         let root = parse_node(&tokens, &mut pos)?;
 
         Ok(ImageProgram {
-            width, height, bitdepth, channels, orientation, rct,
-            extra_headers, splines, root,
+            width,
+            height,
+            bitdepth,
+            channels,
+            orientation,
+            rct,
+            extra_headers,
+            splines,
+            root,
         })
     }
 }
@@ -327,7 +357,9 @@ fn strip_block_comments(s: &str) -> String {
                 out.push(' '); // keep token boundary
                 let after = &rest[start + 2..];
                 match after.find("*/") {
-                    Some(end) => { rest = &after[end + 2..]; }
+                    Some(end) => {
+                        rest = &after[end + 2..];
+                    }
                     None => {
                         out.push_str("/*");
                         out.push_str(after);
@@ -335,49 +367,64 @@ fn strip_block_comments(s: &str) -> String {
                     }
                 }
             }
-            None => { out.push_str(rest); break; }
+            None => {
+                out.push_str(rest);
+                break;
+            }
         }
     }
     out
 }
 
 fn parse_u32(rest: &[&str], key: &str) -> Result<u32, String> {
-    let v = rest.first().ok_or_else(|| format!("expected value after '{}'", key))?;
+    let v = rest
+        .first()
+        .ok_or_else(|| format!("expected value after '{}'", key))?;
     v.parse().map_err(|_| format!("bad {}: {}", key, v))
 }
 
 /// Recursively parse one node (if-branch or predict leaf) from the token stream.
 fn parse_node(tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
-    let tok = *tokens.get(*pos)
+    let tok = *tokens
+        .get(*pos)
         .ok_or_else(|| "unexpected end of input while parsing node".to_string())?;
     *pos += 1;
 
     match tok {
         "if" => {
-            let var_str = *tokens.get(*pos)
+            let var_str = *tokens
+                .get(*pos)
                 .ok_or("expected variable name after 'if'")?;
             *pos += 1;
-            let op_str = *tokens.get(*pos)
-                .ok_or("expected operator after variable")?;
+            let op_str = *tokens.get(*pos).ok_or("expected operator after variable")?;
             *pos += 1;
-            let thr_str = *tokens.get(*pos)
-                .ok_or("expected threshold value")?;
+            let thr_str = *tokens.get(*pos).ok_or("expected threshold value")?;
             *pos += 1;
 
             if op_str != ">" {
                 return Err(format!("only '>' operator is supported, got '{}'", op_str));
             }
             let var = parse_var(var_str);
-            let threshold: i64 = thr_str.parse()
+            let threshold: i64 = thr_str
+                .parse()
                 .map_err(|_| format!("bad threshold: '{}'", thr_str))?;
-            let condition = Condition { var, op: Op::Gt, threshold };
+            let condition = Condition {
+                var,
+                op: Op::Gt,
+                threshold,
+            };
 
-            let on_true  = Box::new(parse_node(tokens, pos)?);
+            let on_true = Box::new(parse_node(tokens, pos)?);
             let on_false = Box::new(parse_node(tokens, pos)?);
-            Ok(Node::If { condition, on_true, on_false })
+            Ok(Node::If {
+                condition,
+                on_true,
+                on_false,
+            })
         }
         "-" => {
-            let name = *tokens.get(*pos)
+            let name = *tokens
+                .get(*pos)
                 .ok_or("expected predictor name after '-'")?;
             *pos += 1;
             parse_predictor_tokens(name, tokens, pos)
@@ -388,68 +435,92 @@ fn parse_node(tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
 
 fn parse_predictor_tokens(name: &str, tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
     if name == "Set" {
-        let v_str = *tokens.get(*pos)
-            .ok_or("expected value after 'Set'")?;
+        let v_str = *tokens.get(*pos).ok_or("expected value after 'Set'")?;
         *pos += 1;
-        let v: i64 = v_str.parse()
+        let v: i64 = v_str
+            .parse()
             .map_err(|_| format!("bad Set value: '{}'", v_str))?;
         return Ok(Node::Predict(Predictor::Set(v)));
     }
 
     // Offset: "0" | "+ N" | "- N" | signed-int-literal ("+137", "-195", "42")
-    let sign_or_zero = *tokens.get(*pos)
+    let sign_or_zero = *tokens
+        .get(*pos)
         .ok_or_else(|| format!("expected offset after '{}'", name))?;
 
     let (offset_val, offset_raw): (i64, String) = match sign_or_zero {
-        "0" => { *pos += 1; (0, "0".to_string()) }
+        "0" => {
+            *pos += 1;
+            (0, "0".to_string())
+        }
         "+" => {
             *pos += 1;
             let mag = *tokens.get(*pos).ok_or("expected magnitude after '+'")?;
             *pos += 1;
-            let n: i64 = mag.parse().map_err(|_| format!("bad magnitude: '{}'", mag))?;
+            let n: i64 = mag
+                .parse()
+                .map_err(|_| format!("bad magnitude: '{}'", mag))?;
             (n, format!("+ {}", mag))
         }
         "-" => {
             *pos += 1;
             let mag = *tokens.get(*pos).ok_or("expected magnitude after '-'")?;
             *pos += 1;
-            let n: i64 = mag.parse().map_err(|_| format!("bad magnitude: '{}'", mag))?;
+            let n: i64 = mag
+                .parse()
+                .map_err(|_| format!("bad magnitude: '{}'", mag))?;
             (-n, format!("- {}", mag))
         }
         other if is_signed_int(other) => {
             *pos += 1;
-            let n: i64 = other.parse().map_err(|_| format!("bad offset: '{}'", other))?;
+            let n: i64 = other
+                .parse()
+                .map_err(|_| format!("bad offset: '{}'", other))?;
             (n, other.to_string())
         }
-        other => return Err(format!("expected '0', '+', '-', or signed int for offset, got '{}'", other)),
+        other => {
+            return Err(format!(
+                "expected '0', '+', '-', or signed int for offset, got '{}'",
+                other
+            ))
+        }
     };
 
     let pred = match name {
-        "N"        => Predictor::N(offset_val),
-        "W"        => Predictor::W(offset_val),
-        "AvgN+NW"  => Predictor::AvgNNW(offset_val),
-        "AvgN+NE"  => Predictor::AvgNNE(offset_val),
-        "AvgW+NW"  => Predictor::AvgWNW(offset_val),
+        "N" => Predictor::N(offset_val),
+        "W" => Predictor::W(offset_val),
+        "AvgN+NW" => Predictor::AvgNNW(offset_val),
+        "AvgN+NE" => Predictor::AvgNNE(offset_val),
+        "AvgW+NW" => Predictor::AvgWNW(offset_val),
         "Weighted" => Predictor::Weighted(offset_val),
-        _          => Predictor::Other { name: name.to_string(), offset: offset_raw },
+        _ => Predictor::Other {
+            name: name.to_string(),
+            offset: offset_raw,
+        },
     };
     Ok(Node::Predict(pred))
 }
 
 fn parse_var(s: &str) -> Var {
     match s {
-        "x"   => Var::X,
-        "y"   => Var::Y,
-        "c"   => Var::C,
-        "W"   => Var::W,
-        "N"   => Var::N,
+        "x" => Var::X,
+        "y" => Var::Y,
+        "c" => Var::C,
+        "W" => Var::W,
+        "N" => Var::N,
         "WGH" => Var::WGH,
-        _     => Var::Other(s.to_string()),
+        _ => Var::Other(s.to_string()),
     }
 }
 
 fn is_signed_int(s: &str) -> bool {
-    if s.is_empty() { return false; }
-    let rest = if s.starts_with('+') || s.starts_with('-') { &s[1..] } else { s };
+    if s.is_empty() {
+        return false;
+    }
+    let rest = if s.starts_with('+') || s.starts_with('-') {
+        &s[1..]
+    } else {
+        s
+    };
     !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())
 }

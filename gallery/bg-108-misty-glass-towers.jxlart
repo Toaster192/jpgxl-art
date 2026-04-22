@@ -1,0 +1,11 @@
+Bitdepth 3
+Width 256
+Height 256
+Upsample 4
+RCT 1
+
+if W+N-NW > -1
+  - AvgW+N -1
+  if c > 1
+    - Select 8
+    - Select 7

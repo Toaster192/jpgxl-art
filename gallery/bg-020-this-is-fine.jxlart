@@ -1,0 +1,15 @@
+Bitdepth 6
+RCT 6
+Width 250
+Height 500
+Upsample 4
+
+if WGH > 0
+  if PrevAbsErr > 2
+    - AvgAll -2
+    if N > 100
+      - AvgW+NW -150
+      - Weighted 2
+  if W > -30
+    - Weighted -2
+    - Weighted 1

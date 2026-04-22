@@ -1,9 +1,0 @@
-Height 256
-Width 256
-Bitdepth 8
-DeltaPalette
-Upsample 4
-
-if W+N-NW > -32
-  - Gradient -1
-  - NE 224

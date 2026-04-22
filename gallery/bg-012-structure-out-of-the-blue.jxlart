@@ -1,0 +1,30 @@
+Bitdepth 14
+Width 1024
+Height 1024
+RCT 18
+
+if W > 0
+  if W > 16384
+- Set 0
+  if N > 0
+    if N-NE > 0
+      if W-NW > 0
+        if c > 0
+          - Select 45
+          - Select 44
+        - Gradient 3
+      if W-NW > 0
+        if c > 0
+          - Select -45
+          - Select -46
+        - AvgAll -8
+    if N-NE > 0
+      - AvgAll -1
+      - AvgAll 1
+  if N > 0
+    if N-NE > 0
+      - Select -15
+      - AvgAll 5
+    if N-NE > 0
+      - Select 4
+      - AvgAll -15

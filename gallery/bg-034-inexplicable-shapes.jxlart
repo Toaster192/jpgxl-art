@@ -1,0 +1,11 @@
+Bitdepth 4
+Width 540
+Height 960
+Upsample 2
+RCT 1
+
+if Prev > 12
+- N 1
+if N > 13
+  - W -2
+  - AvgN+NE 2

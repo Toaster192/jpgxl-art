@@ -1,0 +1,7 @@
+RCT 2 
+Bitdepth 3
+Upsample 2
+
+if W+N-NW > 0
+  - AvgW+N -5
+  - Gradient 6

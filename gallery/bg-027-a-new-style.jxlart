@@ -1,0 +1,11 @@
+Bitdepth 4
+RCT 1
+Width 512
+Height 1024
+Upsample 2
+
+if N > -2
+  if N-NE > 0
+    - AvgN+NE -2
+    - AvgN+NW -1
+  - W 25

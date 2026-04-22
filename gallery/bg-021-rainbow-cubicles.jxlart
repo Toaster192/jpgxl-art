@@ -1,0 +1,29 @@
+Bitdepth 6
+RCT 6
+Width 333
+Height 666
+Upsample 4
+
+if PPrev > 0
+  - Set 15
+  if c > 1
+    if N > -20
+      - AvgN+NE -1
+      - AvgN+NW 0
+    if y > 40
+      if WGH > 0
+        if PrevAbsErr > 4
+          - AvgAll 1
+          if W > 70
+            if c > 0
+              - Weighted -2
+              - Weighted -1333
+            - AvgN+NE 3
+        if W > -60
+          - AvgN+NW -3
+          - Weighted 50
+      if c > 0
+        - Set 0
+        if W > -55
+          - Weighted -1
+          - Set 0

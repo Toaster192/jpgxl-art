@@ -1,0 +1,13 @@
+Bitdepth 8
+Width 512
+Height 1024
+Upsample 2
+RCT 25
+
+if c > 1
+  if Prev > 150
+    - Set -240
+    - AvgAll 3
+  if W > -20
+    - AvgN+NE -2
+    - Set 210

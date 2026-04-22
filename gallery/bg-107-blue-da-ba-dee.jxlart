@@ -1,0 +1,10 @@
+Bitdepth 8
+Width 512
+Height 1024
+Upsample 1
+Squeeze
+RCT 4
+
+if W+N-NW > -16
+  - AvgN+NW -1
+  - AvgW+NW 31

@@ -4,7 +4,16 @@ mod mutations;
 mod render;
 mod tree;
 
-use axum::{Json, Router, body::Body, body::Bytes, extract::Query, http::{header, HeaderMap, StatusCode}, response::Response, routing::get, routing::post};
+use axum::{
+    body::Body,
+    body::Bytes,
+    extract::Query,
+    http::{header, HeaderMap, StatusCode},
+    response::Response,
+    routing::get,
+    routing::post,
+    Json, Router,
+};
 use base64::Engine;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -126,19 +135,27 @@ async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
 
         while let Some(result) = unordered.next().await {
             if let Ok((index, program_text, image)) = result {
-                let item = StreamItem::BatchImage { index, total: COUNT, program_text, image };
+                let item = StreamItem::BatchImage {
+                    index,
+                    total: COUNT,
+                    program_text,
+                    image,
+                };
                 if let Ok(line) = serde_json::to_string(&item) {
                     let _ = tx.send(ndjson(line)).await;
                 }
             }
         }
 
-        let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
+        let done = serde_json::to_string(&StreamItem::Done)
+            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
         let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        rx.recv()
+            .await
+            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
     });
 
     Response::builder()
@@ -158,9 +175,7 @@ struct GalleryCache {
 static GALLERY: OnceLock<GalleryCache> = OnceLock::new();
 
 async fn gallery_handler(headers: HeaderMap) -> Response {
-    let cache: &'static GalleryCache = GALLERY
-        .get()
-        .expect("gallery cache not initialized");
+    let cache: &'static GalleryCache = GALLERY.get().expect("gallery cache not initialized");
 
     if let Some(inm) = headers.get(header::IF_NONE_MATCH) {
         if inm.to_str().map(|s| s == cache.etag).unwrap_or(false) {
@@ -185,7 +200,9 @@ async fn gallery_handler(headers: HeaderMap) -> Response {
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        rx.recv()
+            .await
+            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
     });
 
     Response::builder()
@@ -236,8 +253,8 @@ async fn prerender_gallery() {
     while let Some(result) = tasks.next().await {
         lines.push(result.expect("gallery prerender task panicked"));
     }
-    let done = serde_json::to_string(&StreamItem::Done)
-        .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
+    let done =
+        serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
     lines.push(ndjson(done));
 
     let etag = compute_etag(&lines);
@@ -297,7 +314,10 @@ async fn download_png(
     .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "image/png")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"artxl.png\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"artxl.png\"",
+        )
         .body(Body::from(png))
         .unwrap())
 }
@@ -312,7 +332,10 @@ async fn download_jxl(
         .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "image/jxl")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"artxl.jxl\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"artxl.jxl\"",
+        )
         .body(Body::from(jxl))
         .unwrap())
 }
@@ -355,12 +378,15 @@ fn stream_single(program_text: String, size: u32) -> Response {
                 let _ = tx.send(ndjson(line)).await;
             }
         }
-        let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
+        let done = serde_json::to_string(&StreamItem::Done)
+            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
         let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        rx.recv()
+            .await
+            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
     });
 
     Response::builder()
@@ -424,7 +450,11 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
             .collect();
 
         if let Ok((program_text, image)) = orig_handle.await {
-            let item = StreamItem::Original { program_text, image, mutation_count };
+            let item = StreamItem::Original {
+                program_text,
+                image,
+                mutation_count,
+            };
             if let Ok(line) = serde_json::to_string(&item) {
                 let _ = tx.send(ndjson(line)).await;
             }
@@ -432,19 +462,28 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
 
         while let Some(result) = ordered.next().await {
             if let Ok((label, program_text, image, compound, warning)) = result {
-                let item = StreamItem::Mutation { label, program_text, image, compound, warning };
+                let item = StreamItem::Mutation {
+                    label,
+                    program_text,
+                    image,
+                    compound,
+                    warning,
+                };
                 if let Ok(line) = serde_json::to_string(&item) {
                     let _ = tx.send(ndjson(line)).await;
                 }
             }
         }
 
-        let done = serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
+        let done = serde_json::to_string(&StreamItem::Done)
+            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
         let _ = tx.send(ndjson(done)).await;
     });
 
     let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        rx.recv()
+            .await
+            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
     });
 
     Response::builder()
@@ -482,7 +521,7 @@ fn unsupported_placeholder() -> ImagePayload {
         for x in 0..W {
             let idx = ((y * W + x) * 4) as usize;
             let shade: u8 = if (x + y) % 24 < 12 { 40 } else { 56 };
-            rgba[idx]     = shade;
+            rgba[idx] = shade;
             rgba[idx + 1] = shade;
             rgba[idx + 2] = shade;
             rgba[idx + 3] = 255;

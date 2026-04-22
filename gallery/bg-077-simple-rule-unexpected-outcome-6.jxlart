@@ -1,0 +1,11 @@
+Bitdepth 2
+Upsample 8
+RCT 0
+Width 300
+Height 300
+
+if W+N-NW > -32
+  if W+N-NW > 31
+    - Set -16
+    - AvgW+N -1
+  - Set 14

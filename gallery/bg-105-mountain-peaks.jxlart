@@ -1,0 +1,8 @@
+Bitdepth 1
+Width 120
+Height 32
+Upsample 8
+
+if W+N-NW > -8
+ - N -5
+ - Set 4

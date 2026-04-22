@@ -1,0 +1,8 @@
+Bitdepth 8
+Width 256
+Height 256
+Upsample 4
+
+if W > 255
+  - Weighted -256
+  - Weighted 103

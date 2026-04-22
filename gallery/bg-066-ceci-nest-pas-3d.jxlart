@@ -1,0 +1,12 @@
+Bitdepth 3
+RCT 13
+Width 135
+Height 240
+Upsample 8
+Orientation 1
+
+if PrevErr > -1
+  if W+N-NW > 0
+    - NW -3
+    - NE 11
+  - Set 0

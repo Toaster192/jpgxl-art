@@ -1,0 +1,14 @@
+Bitdepth 8
+Upsample 4
+RCT 0
+
+Width 512
+Height 512
+
+if Prev > -90
+if W+N-NW > -128
+  if W+N-NW > 255
+    - AvgW+N -210
+    - Select -1
+  - Gradient 255
+- Select -1

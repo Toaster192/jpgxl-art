@@ -1,0 +1,14 @@
+Height 666
+Width 999
+Bitdepth 8
+DeltaPalette
+
+if x > 444
+if x > 800
+- NW -1
+- W -1
+if y > 221
+  if y > 443
+    - Set 32
+    - Set 188
+    - Set 3

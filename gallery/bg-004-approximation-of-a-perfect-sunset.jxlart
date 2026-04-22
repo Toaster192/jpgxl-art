@@ -1,0 +1,14 @@
+Bitdepth 9
+RCT 12
+Orientation 2
+Alpha
+
+if WGH > 10
+  - AvgAll -1
+  if Prev > 100
+    - AvgW+NW 1
+    if N > -1
+      if N > 100
+        - AvgAll -8
+        - AvgW+NW - 5
+      - Weighted 250

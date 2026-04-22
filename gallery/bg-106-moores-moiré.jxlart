@@ -1,0 +1,9 @@
+Bitdepth 4
+Width 120
+Height 60
+Upsample 4
+
+if W+N-NW > -7
+ - AvgN+NE -1
+ - AvgN+NW 11
+

@@ -1,0 +1,45 @@
+Bitdepth 10
+PQ
+Height 512
+
+if x > 0
+if y > 300
+- W 1
+if x > 20
+if x > 84
+if x > 110
+if x > 142
+if x > 178
+if x > 222
+if x > 271
+if x > 326
+if x > 387
+if x > 452
+if x > 521
+if x > 593
+if x > 594
+if x > 668
+if x > 743
+if x > 822
+if x > 899
+- Set 976  /* 6470 nits, +5 stops */ 
+- Set 900  /* 3238 nits, +4 stops */
+- Set 823  /* 1620 nits, +3 stops */
+- Set 746  /* 812 nits, +2 stops */
+- Set 669 /* 405 nits, +1 stops */
+if c > 0
+- Set 0
+- Set 900
+- Set 594 /* 203 nits, SDR white */
+- Set 521 /* 101 nits, -1 stops */
+- Set 452 /* 50.8 nits, -2 stops */
+- Set 387 /* 25.5 nits, -3 stops */
+- Set 326 /* 12.6 nits, -4 stops */
+- Set 271 /* 6.3 nits, -5 stops */
+- Set 222 /* 3.17 nits, -6 stops */
+- Set 178 /* 1.56 nits, -7 stops */
+- Set 142 /* 0.79 nits, -8 stops */
+- Set 110 /* 0.39 nits, -9 stops */
+- Set 84 /* 0.19 nits, -10 stops */
+- Set 0
+- Set 0

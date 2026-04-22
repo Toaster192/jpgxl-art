@@ -271,6 +271,18 @@ async function main() {
   errorMsg.textContent = '';
   statusEl.textContent = 'Generating…';
   try {
+    const zcode = new URLSearchParams(location.search).get('zcode');
+    if (zcode && zcodeSupported) {
+      try {
+        const programText = await decodeZcode(zcode);
+        await streamFrom('/api/render', 'POST',
+          { program_text: programText, mode: 'single' }, 0);
+        return;
+      } catch (e) {
+        console.error('bad zcode, falling back to /api/generate', e);
+        errorMsg.textContent = 'Share link is invalid — showing a random program instead.';
+      }
+    }
     await streamFrom('/api/generate', 'GET', null, 0);
   } catch (e) {
     statusEl.textContent = `Error: ${e.message}`;
@@ -342,7 +354,8 @@ function addGalleryCredit(container) {
   el.className = 'gallery-credit';
   el.innerHTML =
     'Programs sourced from the <a href="https://discord.com/invite/jpeg-xl-794206087879852103" ' +
-    'target="_blank" rel="noopener noreferrer">#jxl-art channel on the JPEG XL Discord</a>.';
+    'target="_blank" rel="noopener noreferrer">#jxl-art channel on the JPEG XL Discord</a> ' +
+    'and <a href="https://jpegxl.info/art/" target="_blank" rel="noopener noreferrer">jpegxl.info/art/</a>.';
   container.appendChild(el);
 }
 
@@ -432,6 +445,28 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   cmpBtn.title = 'Pin to comparison bar';
   cmpBtn.addEventListener('click', () => togglePin(canvas, label));
   dlRow.appendChild(cmpBtn);
+
+  if (zcodeSupported) {
+    const shareBtn = makeBtn('📋 Share');
+    shareBtn.title = 'Copy a permalink to this program to the clipboard';
+    shareBtn.addEventListener('click', async () => {
+      shareBtn.disabled = true;
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('zcode', await encodeZcode(programText ?? programEl.value));
+        await navigator.clipboard.writeText(url.toString());
+        shareBtn.textContent = '✓ Copied';
+        setTimeout(() => { shareBtn.textContent = '📋 Share'; }, 1200);
+      } catch (e) {
+        shareBtn.textContent = '⚠ Failed';
+        setTimeout(() => { shareBtn.textContent = '📋 Share'; }, 1500);
+        console.error('share failed', e);
+      } finally {
+        shareBtn.disabled = false;
+      }
+    });
+    dlRow.appendChild(shareBtn);
+  }
 
   info.appendChild(dlRow);
 
@@ -528,5 +563,38 @@ function makeBtn(text) {
   b.className = 'dl-btn';
   return b;
 }
+
+// ── Share-link (zcode) ────────────────────────────────────────────────────────
+
+// Format: base64url(deflateRaw(program_text)). Compatible with the ?zcode=
+// permalinks used by jpegxl.info, jxl-art.surma.technology, etc. — so links
+// made here work there and vice versa. Raw DEFLATE matches Python's
+// zlib.{de,}compress with wbits=-15.
+
+async function encodeZcode(text) {
+  const bytes = new TextEncoder().encode(text);
+  const cs = new CompressionStream('deflate-raw');
+  const w = cs.writable.getWriter();
+  w.write(bytes); w.close();
+  const out = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+  let bin = '';
+  for (const b of out) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+async function decodeZcode(zcode) {
+  const padded = zcode.replaceAll('-', '+').replaceAll('_', '/')
+    + '='.repeat((4 - zcode.length % 4) % 4);
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const ds = new DecompressionStream('deflate-raw');
+  const w = ds.writable.getWriter();
+  w.write(bytes); w.close();
+  return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());
+}
+
+const zcodeSupported = typeof CompressionStream !== 'undefined'
+  && typeof DecompressionStream !== 'undefined';
 
 main();

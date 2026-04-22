@@ -1,0 +1,11 @@
+
+Bitdepth 8
+DeltaPalette
+Width 255
+Height 256
+Upsample 2
+
+
+if W+N-NW > 63
+  - AvgW+NW -129
+  - Select 6

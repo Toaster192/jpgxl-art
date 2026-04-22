@@ -1,0 +1,9 @@
+Bitdepth 8
+RCT 4
+Upsample 1
+
+if W+N-NW > -128
+  if W+N-NW > 255
+    - NW -128
+    - Gradient -2
+  - Gradient 297

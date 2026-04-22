@@ -1,0 +1,31 @@
+RCT 0
+Bitdepth 2
+Width 144
+Height 96
+Upsample 1
+
+if y > 63
+  if y > 79
+    if c > 0
+      if c > 1
+        - Set 2
+        - Set 0
+      - Set 2
+    if c > 0
+      if c > 1
+        - Set 3
+        - Set 1
+      - Set 0
+  if c > 1
+    - Set 0
+    if y > 47
+      if c > 0
+        - Set 2
+        - Set 0
+      if c > 0
+        if y > 15
+          if y > 31
+            - Set 3
+            - Set 2
+          - Set 0
+        - Set 3

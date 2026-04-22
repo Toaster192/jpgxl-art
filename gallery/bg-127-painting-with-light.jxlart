@@ -1,0 +1,8 @@
+Bitdepth 10
+RCT 5
+
+if W-NW > 0
+  if NW-N > 0
+    - W 1
+    - AvgW+NW 0
+  - Select 1

@@ -1,0 +1,16 @@
+Bitdepth 10
+RCT 13
+Width 480
+Height 270
+Upsample 8
+Orientation 1
+
+if c > 1
+  if x > 0
+    - W 2
+    - W -1
+  if W+N-NW > -5
+    if W-WW-NW+NWW > 0
+      - Gradient -32
+      - Gradient 30
+    - AvgN+NE 511

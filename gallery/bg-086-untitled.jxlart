@@ -1,0 +1,11 @@
+Bitdepth 8
+Upsample 1
+RCT 0
+Width 700
+Height 700
+
+if W+N-NW > -128
+  if W+N-NW > 255
+    - Select -256
+    - Select 4
+  - Select 240

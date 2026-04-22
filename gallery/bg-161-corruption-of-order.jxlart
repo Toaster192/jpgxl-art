@@ -1,0 +1,6 @@
+Bitdepth 10
+DeltaPalette
+
+if W+N-NW > 0
+- Set -33
+- AvgAll 2

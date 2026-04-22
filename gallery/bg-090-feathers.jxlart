@@ -1,0 +1,13 @@
+Bitdepth 1
+RCT 1
+Upsample 1
+Orientation 1
+Width 1024
+Height 1024
+Squeeze
+
+if y > 3
+  if y > 8
+    - Set 0
+    - Set -31
+  - Set 0

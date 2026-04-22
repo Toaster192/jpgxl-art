@@ -1,0 +1,42 @@
+Squeeze
+XYB
+Width 1920
+Height 1024
+
+if c > 4
+  if W > 0
+    if |W| > 1024
+      - Set 0
+      if W-NW > 0
+        if N-NE > 0
+          if x > 192
+            if N-NN > 0
+              - Weighted 1
+              if PPrevAbsErr > 0
+                - Weighted -1
+                - Weighted -512
+            if c > 15
+              if W-WW > 0
+                - Weighted 1
+                if PPrevAbsErr > 0
+                  - Weighted -1
+                  - Weighted -512
+              if N-NN > 0
+                - Weighted 1
+                if PPrevAbsErr > 0
+                  - Weighted -1
+                  - Weighted -512
+          if WGH > 0
+            - Weighted -128
+            - Weighted 1
+        - Set 0
+    - Set 128
+  if |W| > 0
+    - Set 0
+    if WGH > 0
+      if PPrevAbsErr > 0
+        - Weighted 512
+        - Weighted -320
+      if PrevErr > 0
+        - Weighted -128
+        - Weighted 128

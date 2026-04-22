@@ -1,0 +1,17 @@
+Bitdepth 8
+Width 900
+Height 600
+
+if y > 199
+  if y > 399
+    if c > 0
+      if c > 1
+        - Set 46
+        - Set 16
+      - Set 200
+    - Set 255
+  if c > 0
+    if c > 1
+      - Set 46
+      - Set 16
+    - Set 200

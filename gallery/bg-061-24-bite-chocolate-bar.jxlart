@@ -1,0 +1,11 @@
+Bitdepth 2
+RCT 2
+Width 270
+Height 480
+Upsample 8
+Orientation 1
+Squeeze
+
+if W > -2
+  - W -2
+  - Set 3

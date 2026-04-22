@@ -1,0 +1,11 @@
+Bitdepth 12
+RCT 0
+Upsample 4
+Width 256
+Height 256
+
+if PrevErr > 31
+  - Select 7
+  if W+N-NW > -256
+    - NW -4
+    - NW 255

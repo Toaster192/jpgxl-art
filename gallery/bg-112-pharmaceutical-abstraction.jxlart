@@ -1,0 +1,9 @@
+RCT 0
+Bitdepth 3
+Upsample 8
+Width 128
+Height 384
+
+if W+N-NW > 0
+  - NW -4
+  - NE 7

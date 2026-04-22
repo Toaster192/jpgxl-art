@@ -1,0 +1,14 @@
+Bitdepth 10
+EPF 2
+Gaborish
+DeltaPalette
+Squeeze
+
+
+if c > 5
+- Set -5
+
+if c > 1
+- Set 1
+- W -3
+

@@ -1,0 +1,15 @@
+Bitdepth 7
+RCT 13
+Upsample 8
+Width 128
+Height 128
+
+if c > 0
+if x > 0
+- W -1
+- W 1
+if W-NW > 0
+  if NW-N > 0
+    - NW 1
+    - NW 0
+  - Select 1

@@ -1,0 +1,14 @@
+RCT 0
+Bitdepth 3
+Squeeze
+
+
+if c > 1
+  if |W| > 7
+    if W > 0
+      - NW -5
+      - W 5
+    if W > -5
+      - Weighted -1
+      - Weighted 8
+  - Set 0

@@ -1,0 +1,11 @@
+Bitdepth 10
+RCT 20
+Upsample 1
+
+if c > 1
+  if y > 0
+    - N 1
+    - N -1
+  if W+N-NW > 0
+    - AvgN+NE -2
+    - Gradient 444

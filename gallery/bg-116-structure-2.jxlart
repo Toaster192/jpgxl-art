@@ -1,0 +1,9 @@
+Bitdepth 8
+RCT 0
+Upsample 2
+Width 1024
+Height 1024
+
+if W+N-NW > 31
+  - Select -128
+  - NW 6

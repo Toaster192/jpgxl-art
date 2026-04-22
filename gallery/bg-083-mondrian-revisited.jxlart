@@ -1,0 +1,15 @@
+Bitdepth 7
+Upsample 8
+RCT 0
+
+Width 512
+Height 512
+
+
+if c > 0
+if Prev > 78
+- Set 127
+- Set -128
+if W+N-NW > 63
+  - Select -30
+  - NW 2

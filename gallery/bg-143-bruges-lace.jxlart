@@ -1,0 +1,7 @@
+Bitdepth 1
+Gaborish
+EPF 2
+
+if W+N-NW > 0
+  - NW -1
+  - Gradient 2

@@ -1,0 +1,8 @@
+Bitdepth 10
+DeltaPalette
+
+if W+N-NW > -1
+- Set -99
+if WGH > 0
+- AvgN+NW 3
+- AvgN+NE -2

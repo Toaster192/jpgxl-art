@@ -1,0 +1,7 @@
+Bitdepth 10
+
+if W-NW > -1
+  if NW-N > -1
+    - W 1
+    - NW 0
+  - Select 1

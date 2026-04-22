@@ -1,0 +1,12 @@
+Bitdepth 8
+RCT 0
+Width 1024
+Height 1024
+Upsample 1
+Orientation 1
+
+if W+N-NW > -64
+  - Select -3
+  if Prev > 0
+    - AvgAll 250
+    - AvgAll 255

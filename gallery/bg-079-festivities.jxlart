@@ -1,0 +1,16 @@
+Bitdepth 8
+Upsample 8
+RCT 13
+
+Width 256
+Height 256
+
+if c > 1
+if x > 0
+- W 1
+- W -1
+if W+N-NW > -128
+  if W+N-NW > 255
+    - Set -64
+    - Gradient -8
+  - Set 255

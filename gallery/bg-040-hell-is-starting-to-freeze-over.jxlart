@@ -1,0 +1,10 @@
+Bitdepth 2
+Width 1024
+Height 1024
+RCT 1
+
+if W > -0
+  - Gradient -2
+  if N > 0
+    - Set -250
+    - Weighted 166

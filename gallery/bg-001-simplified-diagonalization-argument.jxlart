@@ -1,0 +1,7 @@
+Squeeze
+
+if c > 1
+  if W > 0
+    - AvgW+NW - 124
+    - AvgW+NW + 127
+  - W -50

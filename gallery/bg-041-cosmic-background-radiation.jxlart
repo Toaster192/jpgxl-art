@@ -1,0 +1,15 @@
+Bitdepth 10
+Width 540
+Height 960
+Upsample 4
+RCT 13
+
+if c > 0
+  if x > 0
+    - W 1
+    - N -1
+  if W > -5
+    - Gradient -1
+    if N > -3
+      - AvgAll -3
+      - Weighted 99

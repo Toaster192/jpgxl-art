@@ -1,0 +1,9 @@
+Width 512
+Height 256
+DeltaPalette
+EPF 2
+Gaborish
+
+if W-WW-NW+NWW > -4
+- NW -1
+- Weighted 4

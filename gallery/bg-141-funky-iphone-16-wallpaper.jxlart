@@ -1,0 +1,17 @@
+Bitdepth 8
+Width 960
+Height 960
+
+if y > 640
+  if c > 0
+      if c > 1
+        - Set 0
+        - Set 215
+      - Set 255
+if y > 320
+  if c > 0
+      if c > 1
+        - Set 0
+        - Set 0
+      - Set 255
+- Set 0

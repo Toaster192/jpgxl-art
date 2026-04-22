@@ -1,0 +1,9 @@
+Bitdepth 8
+RCT 13
+Upsample 1
+
+if PrevErr > 0
+  - AvgW+N 15
+  if W+N-NW > -64
+    - Gradient -4
+    - Select 222

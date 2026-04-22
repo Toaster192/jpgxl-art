@@ -1,0 +1,12 @@
+Bitdepth 3
+RCT 1
+Width 135
+Height 240
+Upsample 8
+Orientation 7
+
+if W-NW > 0
+  if NW-N > 0
+    - W 0
+    - AvgN+NW -12
+  - Select 2

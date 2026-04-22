@@ -1,0 +1,11 @@
+Bitdepth 8
+DeltaPalette
+Squeeze
+
+if c > 1
+if c > 3
+- Set 0
+- Set -2
+- Set 0
+
+

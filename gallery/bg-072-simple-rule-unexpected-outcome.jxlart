@@ -1,0 +1,11 @@
+Bitdepth 3
+Upsample 8
+Width 256
+Height 128
+RCT 2
+
+if N > 0
+  - AvgN+NW -1
+  if W > -7
+    - AvgW+N -1
+    - Set 15

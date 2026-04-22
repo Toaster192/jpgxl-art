@@ -1,0 +1,6 @@
+Height 512
+Width 512
+Bitdepth 9
+  if W > 129
+  - Weighted -2
+  - Select 380

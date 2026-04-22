@@ -1,0 +1,29 @@
+if c > 1
+    if x > 924
+        - NE + 0
+    if x > 424
+        if y > 924
+            - NE + 0
+        if y > 424
+            - Set 255
+        - NE + 0
+    - NE + 0
+if c > 0
+    if x > 762
+        - NE + 0
+    if x > 262
+        if y > 762
+            - NE + 0
+        if y > 262
+            - Set 255
+        - NE + 0
+    - NE + 0
+if x > 600
+    - NE + 0
+if x > 100
+    if y > 600
+        - NE + 0
+    if y > 100
+        - Set 255
+    - NE + 0
+- NE + 0

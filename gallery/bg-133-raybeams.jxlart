@@ -1,0 +1,25 @@
+Bitdepth 8
+
+if x > 1
+ if WGH > 19006
+ - N -1
+ if WGH > 1231
+ - NE 7
+ if c > 0
+  if Prev > 20
+   if W-NW > 0
+    - W -3
+    - W 0
+   if N > 210
+    - NE -76
+    - NW 7
+  if WGH > 24
+   if Prev > 50
+    - W -50
+    - W 2
+   - NW -3
+ if y > 1
+  if N > 100
+   - W -28
+   - N +100
+  - Set 255

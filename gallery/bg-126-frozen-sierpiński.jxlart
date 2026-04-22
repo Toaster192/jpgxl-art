@@ -1,0 +1,46 @@
+Bitdepth 8
+RCT 0
+Width 800
+Height 500
+
+if y > 199
+  if y > 299
+    if x > 199
+      if x > 299
+        if c > 0
+          if c > 1
+            - Set 167
+            - Set 106
+          - Set 0
+        if c > 0
+          if c > 1
+            - Set 2
+            - Set 204
+          - Set 254
+      if c > 0
+        if c > 1
+          - Set 167
+          - Set 106
+        - Set 0
+    if c > 0
+      if c > 1
+        - Set 2
+        - Set 204
+      - Set 254
+  if x > 199
+    if x > 299
+      if c > 0
+        if c > 1
+          - Set 167
+          - Set 106
+        - Set 0
+      if c > 0
+        if c > 1
+          - Set 2
+          - Set 204
+        - Set 254
+    if c > 0
+      if c > 1
+        - Set 167
+        - Set 106
+      - Set 0

@@ -1,6 +1,0 @@
-Bitdepth 10
-DeltaPalette
-
-if W+N-NW > 0
-  - NE -241
-  - AvgW+N 1

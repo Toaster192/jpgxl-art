@@ -1,0 +1,11 @@
+Bitdepth 8
+Upsample 1
+RCT 13
+
+if PrevErr > 0
+  - Select 0
+  if W+N-NW > -256
+    if W+N-NW > 255
+      - Select -256
+      - Select 2
+    - Select 223

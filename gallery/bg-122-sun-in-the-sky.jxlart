@@ -1,0 +1,13 @@
+Bitdepth 4
+Width 100
+Height 80
+Upsample 8
+RCT 0
+
+if y > 0
+if N > 0
+  - NE -1
+  - NE 2
+if W > -1
+- Set -10
+- Set 2

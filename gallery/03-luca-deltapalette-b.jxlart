@@ -1,7 +1,0 @@
-Bitdepth 8
-DeltaPalette
-Squeeze
-
-if c > 5
-  - Set 0
-  - W 4

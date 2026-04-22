@@ -1,0 +1,14 @@
+Bitdepth 10
+RCT 13
+Width 999
+Height 666
+Upsample 2
+Orientation 1
+
+if c > 0
+  if x > 0
+    - W 1
+    - W -2
+  if W+N-NW > 0
+    - Select -3
+    - NE 8

@@ -1,0 +1,11 @@
+Bitdepth 8
+DeltaPalette
+
+
+if W+N-NW > 0
+- Gradient -300
+if W+N-NW > -100
+if WGH > 0
+- AvgN+NW -3
+- AvgN+NE 3
+- Gradient 1

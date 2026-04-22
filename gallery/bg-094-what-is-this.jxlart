@@ -1,0 +1,12 @@
+Bitdepth 4
+RCT 0
+Upsample 1
+Orientation 1
+Width 1024
+Height 1024
+
+  if W+N-NW > -29
+    if W+N-NW > 33
+      - NW -28
+      - Select -1
+    - Gradient 33

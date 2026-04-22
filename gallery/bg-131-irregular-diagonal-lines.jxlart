@@ -1,0 +1,11 @@
+Bitdepth 8
+
+if y > 800
+  if y > 801
+    - N -2
+    if c > 1
+      - Set 200
+      - Set 100
+  if N > 100
+    - W - 5
+    - NE + 2

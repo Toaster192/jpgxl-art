@@ -1,0 +1,6 @@
+Bitdepth 3
+RCT 34
+Width 750
+if N > 5
+  - W -10
+  - AvgN+NE 8

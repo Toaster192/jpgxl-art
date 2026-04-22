@@ -1,0 +1,9 @@
+Bitdepth 8
+Upsample 1
+RCT 13
+
+if W+N-NW > 255
+  - Select -128
+  if W+N-NW > 0
+    - Select -1
+    - Select 133

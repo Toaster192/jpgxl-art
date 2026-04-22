@@ -1,0 +1,15 @@
+Bitdepth 10
+Width 500
+Height 500
+Upsample 4
+RCT 27
+
+if c > 1
+  if PrevAbsErr > 20
+    - Set 700
+    - N -20
+  if W > 0
+    if WGH > 0
+      - Weighted -1
+      - AvgN+NE -81
+    - Select 1200

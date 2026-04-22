@@ -1,0 +1,9 @@
+
+Bitdepth 12
+Width 472
+Height 1024
+DeltaPalette
+
+if W+N-NW > -48
+- AvgW+N -1
+- Weighted 32

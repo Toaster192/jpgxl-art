@@ -1,0 +1,7 @@
+Bitdepth 4
+RCT 9
+FramePos -256 -512
+
+if WGH > -8
+  - AvgW+NW 1
+  - AvgN+NE -1

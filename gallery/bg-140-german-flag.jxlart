@@ -1,0 +1,11 @@
+DeltaPalette
+Width 512
+Height 512
+
+Bitdepth 1
+
+if W-NW > -1
+  if NW-N > -1
+    - W 1
+    - NW 0
+  - Select 1

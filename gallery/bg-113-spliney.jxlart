@@ -1,0 +1,9 @@
+RCT 13
+Bitdepth 8
+Upsample 1
+
+if PrevAbsErr > 0
+  - AvgW+N -1
+  if W+N-NW > 0
+    - Select -5
+    - AvgN+NE 128

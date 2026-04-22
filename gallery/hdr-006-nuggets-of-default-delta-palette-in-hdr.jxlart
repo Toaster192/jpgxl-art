@@ -1,0 +1,7 @@
+Bitdepth 10
+DeltaPalette
+Rec2100 PQ
+
+if N > -157
+- Gradient -1
+- Weighted 60

@@ -1,0 +1,11 @@
+Bitdepth 2
+Width 1024
+Height 1024
+Upsample 2
+RCT 34
+
+if W > -5
+  - Gradient -2
+  if N > -3
+    - Weighted -2
+    - Weighted 4

@@ -1,0 +1,9 @@
+Bitdepth 6
+RCT 0
+Width 128
+Height 128
+Upsample 8
+
+if W > 0
+  - Gradient -1
+  - Weighted 2

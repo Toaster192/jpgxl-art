@@ -1,0 +1,15 @@
+
+DeltaPalette
+Width 2048
+Height 2048
+
+if W+N-NW > 0
+  - AvgW+N -20
+
+if g > 21
+if g > 22
+if g > 23
+  - Gradient 4
+  - Gradient 6
+  - Gradient 2
+  - Gradient 8

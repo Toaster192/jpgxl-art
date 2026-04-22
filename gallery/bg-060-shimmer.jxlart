@@ -1,0 +1,12 @@
+Bitdepth 8
+RCT 13
+Width 720
+Height 405
+Upsample 4
+Orientation 1
+
+if W > -15
+  if Prev > 0
+    - Set 0
+    - Select -3
+  - AvgN+NW 255

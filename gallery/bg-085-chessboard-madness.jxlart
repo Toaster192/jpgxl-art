@@ -1,0 +1,11 @@
+Bitdepth 3
+Upsample 1
+RCT 0
+Width 512
+Height 512
+
+if W+N-NW > -16
+  if W+N-NW > 31
+    - AvgW+N -32
+    - Select 1
+    - AvgW+N 17

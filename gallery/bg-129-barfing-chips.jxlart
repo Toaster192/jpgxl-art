@@ -1,0 +1,15 @@
+RCT 8
+Bitdepth 10
+Width 960
+Height 540
+Upsample 2
+
+if c > 0
+  if PrevErr > 0
+    - NW -2
+    - AvgW+N 1
+  if W-NW > -1
+    if NW-N > -1
+      - W 1
+      - NW -1
+    - Select 1

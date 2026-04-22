@@ -1,0 +1,68 @@
+RCT 0
+HiddenChannel 4
+Bitdepth 8
+Orientation 4
+Width 960
+Height 460
+
+if c > 0
+if c > 1
+if c > 2
+if c > 3
+
+if c > 4
+if c > 5
+
+if Prev3 > 1
+if Prev4 > 1
+if Prev5 > 1
+if Prev6 > 1
+- Set 136
+- Set 85
+- Set 35
+- Set 255
+- Set 58
+
+if Prev2 > 1
+if Prev3 > 1
+if Prev4 > 1
+if Prev5 > 1
+- Set 61
+- Set 217
+- Set 35
+- Set 255
+- Set 123
+
+if Prev1 > 1
+if Prev2 > 1
+if Prev3 > 1
+if Prev4 > 1
+- Set 0
+- Set 252
+- Set 215
+- Set 255
+- Set 0
+
+if y > 0
+  - N + 1530
+  if x > 0
+	- W - 255
+	- Set 0
+
+if y > 0
+  - N + 1530
+  if x > 0
+	- W - 510
+	- Set 0
+
+if y > 0
+  - N + 1020
+  if x > 0
+	- W - 765
+	- Set 0
+
+if y > 0
+  - N + 510
+  if x > 0
+	- W - 765
+	- Set 0

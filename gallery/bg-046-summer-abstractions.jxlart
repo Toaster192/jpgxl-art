@@ -1,0 +1,7 @@
+Bitdepth 4
+Squeeze
+RCT 2
+
+if N > -10
+- AvgAll - 2
+- W + 10

@@ -1,0 +1,12 @@
+Bitdepth 10
+DeltaPalette
+Rec2100 HLG
+Upsample 2
+
+if y > 222
+if y > 555
+- AvgN+NW -1
+- AvgN+NE 1
+- NW -1
+
+

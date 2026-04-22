@@ -1,0 +1,13 @@
+Bitdepth 2
+Upsample 4
+RCT 0
+Width 256
+Height 256
+
+if W+N-NW > -24
+  if W+N-NW > 31
+    - Set -16
+    if W+N-NW > 0
+      - Gradient -2
+      - Gradient -5
+  - Set 31

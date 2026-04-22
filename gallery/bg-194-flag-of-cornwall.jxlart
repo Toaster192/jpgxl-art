@@ -1,0 +1,17 @@
+Width 1000
+Height 600
+Bitdepth 1
+
+if x > 549
+  if y > 349
+    - Set 0
+    if y > 249
+      - Set 1
+      - Set 0
+  if x > 449
+    - Set 1
+    if y > 349
+      - Set 0
+      if y > 249
+        - Set 1
+        - Set 0

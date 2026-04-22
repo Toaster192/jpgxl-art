@@ -1,8 +1,0 @@
-Bitdepth 8
-RCT 13
-
-if W+N-NW > 0
-  if W+N-NW > 255
-    - NE -97
-    - Select 1
-  - AvgW+NW 7

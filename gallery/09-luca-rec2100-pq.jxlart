@@ -1,8 +1,0 @@
-Rec2100 PQ
-Squeeze
-RCT 9
-Bitdepth 3
-
-if W > 0
-  - Set -2
-  - W 1

@@ -1,0 +1,11 @@
+Bitdepth 4
+Upsample 4
+RCT 0
+Width 512
+Height 512
+
+if W+N-NW > -32
+  if W+N-NW > 31
+    - Set -16
+    - Select 1
+  - Set 16

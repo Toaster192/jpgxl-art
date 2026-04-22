@@ -1,0 +1,12 @@
+CbYCr
+Bitdepth 11
+
+if c > 0
+  if PrevErr > -4
+    if PrevErr > -2
+      - NE -1
+      - NW -16
+    - W 10
+  if W > 0
+    - AvgW+NW -1
+    - Set 100

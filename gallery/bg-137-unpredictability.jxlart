@@ -1,0 +1,57 @@
+Bitdepth 8
+Width 960
+Height 960
+
+if y > 180
+  if y > 780
+    if c > 0
+      if c > 1
+        - Set 28
+        - Set 41
+      - Set 218
+    if y > 570
+      if x > 570
+        if c > 0
+          if c > 1
+            - Set 28
+            - Set 41
+          - Set 218
+        if x > 390
+          - Set 255
+          if c > 0
+            if c > 1
+              - Set 28
+              - Set 41
+            - Set 218
+      if y > 390
+        if x > 780
+          if c > 0
+            if c > 1
+              - Set 28
+              - Set 41
+            - Set 218
+          if x > 180
+            - Set 255
+            if c > 0
+              if c > 1
+                - Set 28
+                - Set 41
+              - Set 218
+        if x > 570
+          if c > 0
+            if c > 1
+              - Set 28
+              - Set 41
+            - Set 218
+          if x > 390
+            - Set 255
+            if c > 0
+              if c > 1
+                - Set 28
+                - Set 41
+              - Set 218
+  if c > 0
+    if c > 1
+      - Set 28
+      - Set 41
+    - Set 218

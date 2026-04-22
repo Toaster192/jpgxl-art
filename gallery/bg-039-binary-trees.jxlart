@@ -1,0 +1,11 @@
+Bitdepth 1
+Width 1024
+Height 1024
+RCT 1
+Orientation 5
+
+if W > -100
+  - Gradient -3
+  if N > 10
+    - Set -196
+    - Weighted 255

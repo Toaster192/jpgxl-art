@@ -1,0 +1,20 @@
+Width 960
+Height 540
+Bitdepth 8
+RCT 6
+Orientation 7
+Upsample 2
+
+if c > 0
+  if y > 0
+    if Prev > 0
+      - N 0
+      - N 1
+    - Set -240
+  if N > 255
+    - Weighted -222
+    if N > -100
+      if WGH > 0
+        - AvgAll 29
+        - Select -21
+      - Gradient 1

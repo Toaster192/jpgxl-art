@@ -1,0 +1,13 @@
+Bitdepth 2
+Width 540
+Height 960
+Upsample 4
+Squeeze
+
+if c > 1
+if y > 42
+- Weighted 0
+  if W > 0
+    - Set -2
+    - W 2
+  - Set 0

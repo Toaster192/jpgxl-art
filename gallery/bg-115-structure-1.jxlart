@@ -1,0 +1,16 @@
+Width 192
+Height 128
+Bitdepth 7
+Upsample 4
+
+if x > 127
+  if c > 0
+    - Set 0
+    - Set 100
+  if c > 1
+    if y > 0
+      - N 1
+      - Set 0
+    if x > 63
+      - Set 127
+      - Set 0

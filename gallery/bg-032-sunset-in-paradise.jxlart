@@ -1,0 +1,27 @@
+Bitdepth 8
+Width 1024
+Height 676
+Upsample 1
+Orientation 5
+RCT 6
+FramePos 0 -100
+
+if c > 1
+  if x > 600
+    - W 1
+    - W 0
+  if c > 0
+    if x > 0
+      - W 1
+      - Set -400
+    if y > 58
+      if WGH > 0
+        - AvgN+NE 2
+        - AvgN+NW -1
+      if y > 31
+        if x > 666
+          - AvgN+NE -8
+          - AvgN+NW 1
+        if W > 0
+          - Weighted -1
+          - Set 127

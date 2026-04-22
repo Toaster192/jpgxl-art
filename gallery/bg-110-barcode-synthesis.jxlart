@@ -1,0 +1,13 @@
+Bitdepth 4
+Width 960
+Height 540
+Upsample 4
+RCT 0
+
+if W+N-NW > 15
+  if y > 256
+    - Select -16
+    - NE -16
+  if W-WW-NW+NWW > 0
+    - Select -3
+    - Select 4

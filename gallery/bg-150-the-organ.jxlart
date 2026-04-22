@@ -1,0 +1,10 @@
+
+Bitdepth 8
+Squeeze
+FramePos -512 -512
+
+if c > 10
+if c > 19
+- Set 0
+- W -5
+- W 10

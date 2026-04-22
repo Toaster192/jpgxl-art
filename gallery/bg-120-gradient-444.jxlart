@@ -1,0 +1,12 @@
+Bitdepth 6
+RCT 3
+Upsample 4
+Width 540
+Height 960
+Squeeze
+
+if W+N-NW > 13
+  - Set -12
+  if W-WW-NW+NWW > 0
+    - Gradient -1
+    - Gradient 7

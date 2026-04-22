@@ -1,0 +1,12 @@
+Bitdepth 8
+RCT 13
+Width 270
+Height 480
+Upsample 8
+
+
+if N > 0
+  if N-NE > 0
+    - Select -1
+    - Select -64
+  - Set 255

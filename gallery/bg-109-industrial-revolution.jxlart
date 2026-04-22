@@ -1,0 +1,15 @@
+Bitdepth 10
+Width 512
+Height 1024
+Upsample 2
+RCT 3
+
+if c > 0
+  if Prev > 0
+    - NW 1
+    - NW -1
+  if W+N-NW > 511
+    - NE -32
+    if W-WW-NW+NWW > 0
+      - Select -2
+      - Select 5

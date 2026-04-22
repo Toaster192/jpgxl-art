@@ -1,0 +1,16 @@
+RCT 0
+Bitdepth 8
+Width 256
+Height 256
+DeltaPalette
+
+if y > 10
+  if x > 10
+    - Gradient -1
+    - Gradient 2
+  if x > 10
+    - Gradient 2
+
+if y > 0
+  - N +20
+  - W -5

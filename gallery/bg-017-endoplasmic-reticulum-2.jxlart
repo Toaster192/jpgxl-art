@@ -1,0 +1,15 @@
+Bitdepth 10
+Upsample 4
+Width 512
+Height 512
+RCT 6
+
+if c > 1
+    if y > 0
+      - N -1
+      - N 1
+  if W > 0
+    if WGH > 0
+      - Weighted -4
+      - AvgN+NE -50
+    - Weighted 1000

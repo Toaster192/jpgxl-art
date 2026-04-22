@@ -1,0 +1,14 @@
+RCT 27
+Upsample 2
+Bitdepth 8
+
+Width 960
+Height 540
+
+if c > 1
+  if Prev > 90
+    - NW -2
+    - N 1
+  if W > -100
+    - NW -1
+    - Set 255
