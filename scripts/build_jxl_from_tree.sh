@@ -9,7 +9,6 @@
 set -euo pipefail
 
 DEST="${1:-./jxl_from_tree}"
-LIBJXL_TAG="v0.11.2"
 NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
 # ── Dependency checks ─────────────────────────────────────────────────────────
@@ -46,11 +45,9 @@ fi
 
 TMP_SRC=$(mktemp -d)
 TMP_BUILD=$(mktemp -d)
-cleanup() { rm -rf "$TMP_SRC" "$TMP_BUILD"; }
-trap cleanup EXIT
 
-echo "Cloning libjxl $LIBJXL_TAG (shallow, no submodules)..."
-git clone --depth=1 --branch "$LIBJXL_TAG" https://github.com/libjxl/libjxl.git "$TMP_SRC" \
+echo "Cloning libjxl main (shallow, no submodules)..."
+git clone --depth=1 https://github.com/libjxl/libjxl.git "$TMP_SRC" \
     --quiet 2>&1
 
 # ── Configure ────────────────────────────────────────────────────────────────
@@ -82,9 +79,6 @@ echo "Building jxl_from_tree (using $NPROC cores)..."
 cmake --build "$TMP_BUILD" --parallel "$NPROC"
 
 # ── Install ───────────────────────────────────────────────────────────────────
-
-cmake --install "$TMP_BUILD"
-ldconfig
 
 cp "$TMP_BUILD/tools/jxl_from_tree" "$DEST"
 chmod +x "$DEST"
