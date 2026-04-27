@@ -11,11 +11,11 @@ const renderCompoundBtn       = document.getElementById('render-compound-btn');
 const renderCompoundPreviewBtn = document.getElementById('render-compound-preview-btn');
 const renderCompoundLargeBtn  = document.getElementById('render-compound-large-btn');
 const randomBtn          = document.getElementById('random-btn');
-const randomPreviewBtn   = document.getElementById('random-preview-btn');
-const randomLargeBtn     = document.getElementById('random-large-btn');
+const randomSimpleBtn    = document.getElementById('random-simple-btn');
+const randomComplexBtn   = document.getElementById('random-complex-btn');
 const random20Btn        = document.getElementById('random20-btn');
-const random20PreviewBtn = document.getElementById('random20-preview-btn');
-const random20LargeBtn   = document.getElementById('random20-large-btn');
+const random20SimpleBtn  = document.getElementById('random20-simple-btn');
+const random20ComplexBtn = document.getElementById('random20-complex-btn');
 const galleryBtn         = document.getElementById('gallery-btn');
 const errorMsg    = document.getElementById('error-msg');
 const compareBar  = document.getElementById('compare-bar');
@@ -87,6 +87,31 @@ function showZoom(srcCanvas, programText) {
     });
 }
 
+// Async generator over an ND-JSON response body. Breaking out of the
+// consuming `for await` loop runs the finally block and cancels the
+// reader, so callers can stop early without leaking the stream.
+async function* readNdjson(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try { yield JSON.parse(line); } catch { /* skip malformed line */ }
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
 async function fetchSingleRender(programText, signal) {
   const res = await fetch('/api/render', {
     method: 'POST',
@@ -95,26 +120,8 @@ async function fetchSingleRender(programText, signal) {
     signal,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let nl;
-    while ((nl = buf.indexOf('\n')) !== -1) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      let item;
-      try { item = JSON.parse(line); } catch { continue; }
-      if (item.type === 'original') {
-        // Release the rest of the stream; we only need the first payload.
-        reader.cancel().catch(() => {});
-        return item.image;
-      }
-    }
+  for await (const item of readNdjson(res)) {
+    if (item.type === 'original') return item.image;
   }
   throw new Error('no original in single-render stream');
 }
@@ -208,57 +215,41 @@ async function streamFrom(url, method, body, size = 0) {
     throw new Error(msg || `HTTP ${res.status}`);
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
   let mutationCount = 0;
   let rendered = 0;
   let simpleSectionAdded = false;
   let compoundSectionAdded = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-
-    let nl;
-    while ((nl = buf.indexOf('\n')) !== -1) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      let item;
-      try { item = JSON.parse(line); } catch { continue; }
-
-      if (item.type === 'batch_image') {
-        renderCard(gallery, `Random ${item.index + 1}`, item.image, false, item.program_text);
-        rendered++;
-        statusEl.textContent = `Generated ${rendered} / ${item.total}…`;
-        if (rendered === item.total) statusEl.textContent = `Generated ${rendered} random images.`;
-      } else if (item.type === 'original') {
-        mutationCount = item.mutation_count;
-        programEl.value = item.program_text;
-        renderCard(gallery, 'Original', item.image, true, null);
-        rendered++;
-        statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
-      } else if (item.type === 'mutation') {
-        if (!item.compound && !simpleSectionAdded) {
-          addSectionHeader(gallery, 'Simple mutations');
-          simpleSectionAdded = true;
-        }
-        if (item.compound && !compoundSectionAdded) {
-          addSectionHeader(gallery, 'Compound mutations');
-          compoundSectionAdded = true;
-        }
-        renderCard(gallery, item.label, item.image, false, item.program_text, item.warning);
-        rendered++;
-        statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
-      } else if (item.type === 'gallery_image') {
-        renderCard(gallery, item.name, item.image, false, item.program_text, null, true);
-        rendered++;
-        statusEl.textContent = `Loaded ${rendered} / ${item.total} gallery image(s).`;
-      } else if (item.type === 'done') {
-        statusEl.textContent = `Rendered ${rendered} images.`;
+  for await (const item of readNdjson(res)) {
+    if (item.type === 'batch_image') {
+      renderCard(gallery, `Random ${item.index + 1}`, item.image, false, item.program_text);
+      rendered++;
+      statusEl.textContent = `Generated ${rendered} / ${item.total}…`;
+      if (rendered === item.total) statusEl.textContent = `Generated ${rendered} random images.`;
+    } else if (item.type === 'original') {
+      mutationCount = item.mutation_count;
+      programEl.value = item.program_text;
+      renderCard(gallery, 'Original', item.image, true, null);
+      rendered++;
+      statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
+    } else if (item.type === 'mutation') {
+      if (!item.compound && !simpleSectionAdded) {
+        addSectionHeader(gallery, 'Simple mutations');
+        simpleSectionAdded = true;
       }
+      if (item.compound && !compoundSectionAdded) {
+        addSectionHeader(gallery, 'Compound mutations');
+        compoundSectionAdded = true;
+      }
+      renderCard(gallery, item.label, item.image, false, item.program_text, item.warning);
+      rendered++;
+      statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
+    } else if (item.type === 'gallery_image') {
+      renderCard(gallery, item.name, item.image, false, item.program_text, null, true);
+      rendered++;
+      statusEl.textContent = `Loaded ${rendered} / ${item.total} gallery image(s).`;
+    } else if (item.type === 'done') {
+      statusEl.textContent = `Rendered ${rendered} images.`;
     }
   }
 }
@@ -293,8 +284,8 @@ const allBtns = [
   renderSingleBtn, renderSinglePreviewBtn, renderSingleLargeBtn,
   renderBtn, renderPreviewBtn, renderLargeBtn,
   renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
-  randomBtn, randomPreviewBtn, randomLargeBtn,
-  random20Btn, random20PreviewBtn, random20LargeBtn,
+  randomBtn, randomSimpleBtn, randomComplexBtn,
+  random20Btn, random20SimpleBtn, random20ComplexBtn,
   galleryBtn,
 ];
 
@@ -324,11 +315,22 @@ function bindSizes(btn, previewBtn, largeBtn, busy, url, method, body) {
   largeBtn.addEventListener('click',   () => withBusy(largeBtn,   '…', () => streamFrom(url, method, body(), 2048)));
 }
 
-bindSizes(random20Btn, random20PreviewBtn, random20LargeBtn,
-  'Generating…', '/api/random/batch', 'GET', () => null);
+// Random-program generators don't take a render-size knob (rendered at the
+// program's native 1024×1024); instead the side buttons set tree complexity.
+// 0 = simple (smaller tree), 2 = complex (deeper tree).
+function bindComplexity(btn, simpleBtn, complexBtn, busy, url) {
+  const go = (b, complexity) => withBusy(b, busy,
+    () => streamFrom(`${url}?complexity=${complexity}`, 'GET', null, 0));
+  btn.addEventListener('click',        () => go(btn, 1));
+  simpleBtn.addEventListener('click',  () => go(simpleBtn, 0));
+  complexBtn.addEventListener('click', () => go(complexBtn, 2));
+}
 
-bindSizes(randomBtn, randomPreviewBtn, randomLargeBtn,
-  'Randomizing…', '/api/random', 'GET', () => null);
+bindComplexity(random20Btn, random20SimpleBtn, random20ComplexBtn,
+  'Generating…', '/api/random/batch');
+
+bindComplexity(randomBtn, randomSimpleBtn, randomComplexBtn,
+  'Randomizing…', '/api/random');
 
 bindSizes(renderSingleBtn, renderSinglePreviewBtn, renderSingleLargeBtn,
   'Rendering…', '/api/render', 'POST', () => ({ program_text: programEl.value, mode: 'single' }));
@@ -409,7 +411,7 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
 
   // Download + compare buttons
   const dlRow = document.createElement('div');
-  dlRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;';
+  dlRow.className = 'dl-row';
 
   const pngBtn = makeBtn('↓ PNG');
   pngBtn.addEventListener('click', () => downloadPng(canvas, label));
@@ -423,7 +425,7 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   if (jxlSizeValue > 0) {
     const jxlBtn = makeBtn('↓ JXL');
     const jxlSize = document.createElement('span');
-    jxlSize.style.cssText = 'font-size:0.7rem;color:#666;align-self:center;';
+    jxlSize.className = 'jxl-size';
     jxlSize.textContent = fmtBytes(jxlSizeValue);
     jxlBtn.addEventListener('click', async () => {
       jxlBtn.disabled = true;
@@ -473,27 +475,26 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   // Program text toggle + use-as-baseline
   if (programText) {
     const actionRow = document.createElement('div');
-    actionRow.style.cssText = 'display:flex;gap:8px;align-items:baseline;margin-top:4px;';
+    actionRow.className = 'action-row';
 
     const toggle = document.createElement('a');
     toggle.href = '#';
-    toggle.style.cssText = 'font-size:0.7rem;color:#666;';
+    toggle.className = 'action-link';
     toggle.textContent = '▶ show program';
 
     const pre = document.createElement('pre');
-    pre.style.cssText = 'display:none;font-size:0.65rem;color:#9cdcfe;overflow-x:auto;white-space:pre;margin-top:4px;';
+    pre.className = 'program-pre';
     pre.textContent = programText;
 
     toggle.addEventListener('click', e => {
       e.preventDefault();
-      const hidden = pre.style.display === 'none';
-      pre.style.display = hidden ? 'block' : 'none';
-      toggle.textContent = (hidden ? '▼' : '▶') + ' show program';
+      const visible = pre.classList.toggle('show');
+      toggle.textContent = (visible ? '▼' : '▶') + ' show program';
     });
 
     const useBtn = document.createElement('a');
     useBtn.href = '#';
-    useBtn.style.cssText = 'font-size:0.7rem;color:#4ec9b0;';
+    useBtn.className = 'action-link use';
     useBtn.textContent = '↑ use as baseline';
     useBtn.title = 'Copy this program to the editor for further mutations';
     useBtn.addEventListener('click', e => {

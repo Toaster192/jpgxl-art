@@ -14,6 +14,40 @@ pub(crate) const RCT_POOL: &[u32] = &[0, 2, 6, 10, 13, 16, 20, 27];
 /// Each one independently changes the visual character of the output.
 pub(crate) const HEADER_POOL: &[&str] = &["Gaborish", "XYB", "DeltaPalette", "Squeeze"];
 
+/// User-facing complexity dial for the random program generator. Controls
+/// the branch-probability curve in `random_node` — header probability is
+/// intentionally NOT scaled, since piling on headers tends to make outputs
+/// look samey (Squeeze + DeltaPalette + XYB at once washes detail out).
+#[derive(Debug, Clone, Copy)]
+pub enum Complexity {
+    Simple,
+    Normal,
+    Complex,
+}
+
+impl Complexity {
+    pub fn from_u8(n: u8) -> Self {
+        match n {
+            0 => Self::Simple,
+            2 => Self::Complex,
+            _ => Self::Normal,
+        }
+    }
+
+    /// Branch probabilities indexed by tree depth. After the slice ends, the
+    /// generator forces a leaf — so the slice length sets the maximum depth.
+    fn branch_probs(self) -> &'static [f64] {
+        match self {
+            // ~3-5 nodes typical: usually one or two splits then leaves.
+            Self::Simple => &[0.65, 0.30, 0.10],
+            // ~17 nodes typical: the long-standing default.
+            Self::Normal => &[0.95, 0.85, 0.70, 0.50, 0.25],
+            // ~60+ nodes typical: deeper trees with more conditioning.
+            Self::Complex => &[0.98, 0.95, 0.90, 0.80, 0.60, 0.40, 0.20],
+        }
+    }
+}
+
 fn random_rct(rng: &mut impl Rng) -> u32 {
     RCT_POOL[rng.gen_range(0..RCT_POOL.len())]
 }
@@ -28,8 +62,9 @@ fn random_headers(rng: &mut impl Rng) -> Vec<String> {
         .collect()
 }
 
-pub fn random_program() -> ImageProgram {
+pub fn random_program(complexity: Complexity) -> ImageProgram {
     let mut rng = rand::thread_rng();
+    let probs = complexity.branch_probs();
     // Force a channel split at the root so RCT-6 (YCoCg inverse) actually
     // produces varied colour. Without this, trees that never condition on
     // `c` emit identical Y/Co/Cg values for all channels, and the inverse
@@ -42,8 +77,8 @@ pub fn random_program() -> ImageProgram {
             op: Op::Gt,
             threshold: c_threshold,
         },
-        on_true: Box::new(random_node(&mut rng, 1)),
-        on_false: Box::new(random_node(&mut rng, 1)),
+        on_true: Box::new(random_node(&mut rng, 1, probs)),
+        on_false: Box::new(random_node(&mut rng, 1, probs)),
     };
     ImageProgram {
         width: 1024,
@@ -64,10 +99,10 @@ pub fn random_program() -> ImageProgram {
 /// first just re-roll the cheap program-level knobs (RCT + headers) that
 /// often pull a flat result back into colour; only after several failures
 /// do we regenerate the tree from scratch.
-pub fn random_program_non_degenerate() -> ImageProgram {
+pub fn random_program_non_degenerate(complexity: Complexity) -> ImageProgram {
     const MAX_TRIES: usize = 10;
     const CHEAP_REROLLS: usize = MAX_TRIES - 3;
-    let mut prog = random_program();
+    let mut prog = random_program(complexity);
     for attempt in 0..MAX_TRIES {
         let text = prog.to_text();
         if let Ok((rgba, _, _, _)) = render::render_roundtrip(&text, 64) {
@@ -80,18 +115,16 @@ pub fn random_program_non_degenerate() -> ImageProgram {
             prog.rct = Some(random_rct(&mut rng));
             prog.extra_headers = random_headers(&mut rng);
         } else {
-            prog = random_program();
+            prog = random_program(complexity);
         }
     }
     prog
 }
 
-fn random_node(rng: &mut impl Rng, depth: usize) -> Node {
-    // Branch probability falls off with depth; always a leaf at depth 5.
-    let branch_prob = [0.95, 0.85, 0.70, 0.50, 0.25]
-        .get(depth)
-        .copied()
-        .unwrap_or(0.0);
+fn random_node(rng: &mut impl Rng, depth: usize, branch_probs: &[f64]) -> Node {
+    // Branch probability falls off with depth; always a leaf once we run off
+    // the end of the curve.
+    let branch_prob = branch_probs.get(depth).copied().unwrap_or(0.0);
     if rng.gen::<f64>() < branch_prob {
         // Pick threshold range appropriate to the variable.
         let var = random_var(rng);
@@ -108,8 +141,8 @@ fn random_node(rng: &mut impl Rng, depth: usize) -> Node {
                 op: Op::Gt,
                 threshold,
             },
-            on_true: Box::new(random_node(rng, depth + 1)),
-            on_false: Box::new(random_node(rng, depth + 1)),
+            on_true: Box::new(random_node(rng, depth + 1, branch_probs)),
+            on_false: Box::new(random_node(rng, depth + 1, branch_probs)),
         }
     } else {
         Node::Predict(random_predictor(rng))
@@ -405,7 +438,10 @@ impl Mutation {
                     return prog;
                 }
                 let n = rng.gen_range(0..n_nodes);
-                let replacement = random_node(&mut rng, 1);
+                // Mid-mutation subtree generation always uses the Normal
+                // curve — the user's chosen complexity only governs the
+                // initial random program, not subsequent mutations.
+                let replacement = random_node(&mut rng, 1, Complexity::Normal.branch_probs());
                 replace_nth_node(&mut prog.root, n, &mut 0, &mut |_| replacement.clone());
             }
             Mutation::CycleRct => {

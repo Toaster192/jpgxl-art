@@ -125,6 +125,41 @@
     }
     .dl-btn:hover { background: #2a2a2a; color: #eee; }
     .dl-btn:disabled { opacity: 0.4; cursor: default; }
+    /* ── Card internals (built by renderCard in app.js) ─────────────────── */
+    .card .dl-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .card .jxl-size {
+      font-size: 0.7rem;
+      color: #666;
+      align-self: center;
+    }
+    .card .action-row {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      margin-top: 4px;
+    }
+    .card .action-link {
+      font-size: 0.7rem;
+      color: #666;
+    }
+    .card .action-link.use {
+      color: #4ec9b0;
+    }
+    .card .program-pre {
+      display: none;
+      font-size: 0.65rem;
+      color: #9cdcfe;
+      overflow-x: auto;
+      white-space: pre;
+      margin-top: 4px;
+    }
+    .card .program-pre.show { display: block; }
     /* ── Comparison bar ──────────────────────────────────────────────────── */
     #compare-bar {
       display: none;
@@ -269,13 +304,13 @@
     <div class="btn-row">
       <div class="btn-group">
         <button id="random-btn">Randomize</button>
-        <button id="random-preview-btn" class="preview-btn">320px</button>
-        <button id="random-large-btn" class="preview-btn">2048px</button>
+        <button id="random-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
+        <button id="random-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
       </div>
       <div class="btn-group">
         <button id="random20-btn">Randomize 20</button>
-        <button id="random20-preview-btn" class="preview-btn">320px</button>
-        <button id="random20-large-btn" class="preview-btn">2048px</button>
+        <button id="random20-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
+        <button id="random20-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
       </div>
     </div>
     <div id="error-msg"></div>
@@ -299,6 +334,6 @@
     <div id="zoom-status"></div>
   </div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

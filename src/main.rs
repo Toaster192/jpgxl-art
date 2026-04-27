@@ -38,7 +38,9 @@ const GALLERY_WEBP_QUALITY: f32 = 75.0;
 /// under ~600MB during prerender while saturating a typical 8-core box.
 const RENDER_CONCURRENCY: usize = 8;
 
-use mutations::{is_degenerate, random_compounds, random_program_non_degenerate, Mutation};
+use mutations::{
+    is_degenerate, random_compounds, random_program_non_degenerate, Complexity, Mutation,
+};
 use render::{encode_jxl_from_tree, render_roundtrip};
 use tree::ImageProgram;
 
@@ -109,65 +111,65 @@ struct SizeQuery {
     size: u32,
 }
 
+#[derive(Deserialize, Default)]
+struct RandomQuery {
+    /// 0 = simple, 1 = normal (default), 2 = complex. Anything else maps
+    /// to normal — keeps the endpoint forgiving on stale clients.
+    #[serde(default)]
+    complexity: u8,
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 async fn generate(Query(q): Query<SizeQuery>) -> Response {
     stream_response(ImageProgram::example_jxlart(), q.size, vec![])
 }
 
-async fn randomize(Query(q): Query<SizeQuery>) -> Response {
-    let prog = tokio::task::spawn_blocking(random_program_non_degenerate)
+async fn randomize(Query(q): Query<RandomQuery>) -> Response {
+    let complexity = Complexity::from_u8(q.complexity);
+    let prog = tokio::task::spawn_blocking(move || random_program_non_degenerate(complexity))
         .await
         .expect("random_program_non_degenerate panicked");
-    stream_response(prog, q.size, Mutation::showcase())
+    stream_response(prog, 0, Mutation::showcase())
 }
 
-async fn random_batch(Query(q): Query<SizeQuery>) -> Response {
+async fn random_batch(Query(q): Query<RandomQuery>) -> Response {
     const COUNT: usize = 20;
-    let size = q.size;
+    let complexity = Complexity::from_u8(q.complexity);
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
         let mut unordered = stream::iter(0..COUNT)
             .map(|i| async move {
                 tokio::task::spawn_blocking(move || {
-                    let prog = random_program_non_degenerate();
+                    let prog = random_program_non_degenerate(complexity);
                     let program_text = prog.to_text();
-                    let image = render_to_payload(&program_text, size, encode_preview_webp);
+                    let image = render_to_payload(&program_text, 0, encode_preview_webp);
                     (i, program_text, image)
                 })
                 .await
             })
             .buffer_unordered(RENDER_CONCURRENCY);
 
-        while let Some(result) = unordered.next().await {
-            if let Ok((index, program_text, image)) = result {
-                let item = StreamItem::BatchImage {
+        while let Some(Ok((index, program_text, image))) = unordered.next().await {
+            send_item(
+                &tx,
+                &StreamItem::BatchImage {
                     index,
                     total: COUNT,
                     program_text,
                     image,
-                };
-                if let Ok(line) = serde_json::to_string(&item) {
-                    let _ = tx.send(ndjson(line)).await;
-                }
-            }
+                },
+            )
+            .await;
         }
 
-        let done = serde_json::to_string(&StreamItem::Done)
-            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(ndjson(done)).await;
-    });
-
-    let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv()
-            .await
-            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        send_done(&tx).await;
     });
 
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
-        .body(Body::from_stream(stream))
+        .body(Body::from_stream(ndjson_stream(rx)))
         .unwrap()
 }
 
@@ -206,17 +208,11 @@ async fn gallery_handler(headers: HeaderMap) -> Response {
         }
     });
 
-    let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv()
-            .await
-            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
-    });
-
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
         .header(header::ETAG, &cache.etag)
         .header(header::CACHE_CONTROL, "public, max-age=3600")
-        .body(Body::from_stream(stream))
+        .body(Body::from_stream(ndjson_stream(rx)))
         .unwrap()
 }
 
@@ -280,6 +276,29 @@ async fn prerender_gallery() {
 fn ndjson(mut line: String) -> Bytes {
     line.push('\n');
     Bytes::from(line)
+}
+
+/// Adapt an mpsc receiver into an axum-compatible stream of `Bytes` lines.
+fn ndjson_stream(
+    rx: tokio::sync::mpsc::Receiver<Bytes>,
+) -> impl futures::Stream<Item = Result<Bytes, Infallible>> {
+    futures::stream::unfold(rx, |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+    })
+}
+
+async fn send_item(tx: &tokio::sync::mpsc::Sender<Bytes>, item: &StreamItem) {
+    if let Ok(line) = serde_json::to_string(item) {
+        let _ = tx.send(ndjson(line)).await;
+    }
+}
+
+async fn send_done(tx: &tokio::sync::mpsc::Sender<Bytes>) {
+    let done =
+        serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
+    let _ = tx.send(ndjson(done)).await;
 }
 
 fn compute_etag(lines: &[Bytes]) -> String {
@@ -376,29 +395,22 @@ fn stream_single(program_text: String, size: u32) -> Response {
             render_to_payload(&program_text, size, encode_preview_webp)
         });
         if let Ok(image) = handle.await {
-            let item = StreamItem::Original {
-                program_text: program_text_for_payload,
-                image,
-                mutation_count: 0,
-            };
-            if let Ok(line) = serde_json::to_string(&item) {
-                let _ = tx.send(ndjson(line)).await;
-            }
+            send_item(
+                &tx,
+                &StreamItem::Original {
+                    program_text: program_text_for_payload,
+                    image,
+                    mutation_count: 0,
+                },
+            )
+            .await;
         }
-        let done = serde_json::to_string(&StreamItem::Done)
-            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(ndjson(done)).await;
-    });
-
-    let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv()
-            .await
-            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        send_done(&tx).await;
     });
 
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
-        .body(Body::from_stream(stream))
+        .body(Body::from_stream(ndjson_stream(rx)))
         .unwrap()
 }
 
@@ -415,7 +427,7 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
             (program_text, image)
         });
 
-        let mut ordered = stream::iter(mutations.into_iter())
+        let mut ordered = stream::iter(mutations)
             .map(|m| {
                 let compound = m.is_compound();
                 let p = prog.clone();
@@ -459,45 +471,37 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
             .buffered(RENDER_CONCURRENCY);
 
         if let Ok((program_text, image)) = orig_handle.await {
-            let item = StreamItem::Original {
-                program_text,
-                image,
-                mutation_count,
-            };
-            if let Ok(line) = serde_json::to_string(&item) {
-                let _ = tx.send(ndjson(line)).await;
-            }
+            send_item(
+                &tx,
+                &StreamItem::Original {
+                    program_text,
+                    image,
+                    mutation_count,
+                },
+            )
+            .await;
         }
 
-        while let Some(result) = ordered.next().await {
-            if let Ok((label, program_text, image, compound, warning)) = result {
-                let item = StreamItem::Mutation {
+        while let Some(Ok((label, program_text, image, compound, warning))) = ordered.next().await {
+            send_item(
+                &tx,
+                &StreamItem::Mutation {
                     label,
                     program_text,
                     image,
                     compound,
                     warning,
-                };
-                if let Ok(line) = serde_json::to_string(&item) {
-                    let _ = tx.send(ndjson(line)).await;
-                }
-            }
+                },
+            )
+            .await;
         }
 
-        let done = serde_json::to_string(&StreamItem::Done)
-            .unwrap_or_else(|_| "{\"type\":\"done\"}".into());
-        let _ = tx.send(ndjson(done)).await;
-    });
-
-    let stream = futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv()
-            .await
-            .map(|bytes| (Ok::<_, Infallible>(bytes), rx))
+        send_done(&tx).await;
     });
 
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
-        .body(Body::from_stream(stream))
+        .body(Body::from_stream(ndjson_stream(rx)))
         .unwrap()
 }
 

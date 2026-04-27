@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 // ── Variables usable in conditions ─────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(clippy::upper_case_acronyms)] // names mirror jxl_from_tree's identifiers
 pub enum Var {
     X,
     Y,
