@@ -21,6 +21,8 @@ setup: $(JXL_BIN)
 $(JXL_BIN):
 	./scripts/build_jxl_from_tree.sh $(JXL_BIN)
 
-## Remove the jxl_from_tree binary (force a rebuild on next 'make setup').
+## Remove the jxl_from_tree binary and its bundled .so files
+## (force a rebuild on next 'make setup').
 clean-jxl:
 	rm -f $(JXL_BIN)
+	rm -rf ./lib
