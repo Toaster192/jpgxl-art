@@ -32,17 +32,23 @@ pub fn encode_jxl_from_tree(program_text: &str) -> Result<Vec<u8>, String> {
 
     std::fs::write(&input_path, program_text).map_err(|e| format!("write temp input: {}", e))?;
 
-    let status = Command::new("./jxl_from_tree")
+    let output = Command::new("./jxl_from_tree")
         .arg(&input_path)
         .arg(&output_path)
-        .status()
+        .output()
         .map_err(|e| format!("launch jxl_from_tree: {}", e))?;
 
     let _ = std::fs::remove_file(&input_path);
 
-    if !status.success() {
+    if !output.status.success() {
         let _ = std::fs::remove_file(&output_path);
-        return Err(format!("jxl_from_tree exited with {}", status));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
+        return Err(if stderr.is_empty() {
+            format!("jxl_from_tree exited with {}", output.status)
+        } else {
+            format!("jxl_from_tree exited with {}: {}", output.status, stderr)
+        });
     }
 
     let bytes = std::fs::read(&output_path).map_err(|e| format!("read jxl output: {}", e))?;

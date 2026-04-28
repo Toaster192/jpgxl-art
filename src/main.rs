@@ -227,6 +227,9 @@ async fn prerender_gallery() {
     let start = std::time::Instant::now();
     println!("Pre-rendering gallery ({total} entries)…");
 
+    // Render unordered so a slow entry doesn't stall the pipeline behind it,
+    // then re-sort by `index` before sealing the cache so the gallery still
+    // displays in `gallery::entries()` order across restarts.
     let mut tasks = stream::iter(entries.into_iter().enumerate())
         .map(|(index, e)| async move {
             tokio::task::spawn_blocking(move || {
@@ -235,7 +238,14 @@ async fn prerender_gallery() {
                 } else {
                     e.size.min(GALLERY_MAX_DIM)
                 };
-                let image = render_to_payload(e.program_text, size, encode_gallery_webp);
+                let t0 = std::time::Instant::now();
+                let image = render_to_payload_logged(
+                    e.program_text,
+                    size,
+                    encode_gallery_webp,
+                    Some(e.name),
+                );
+                let elapsed = t0.elapsed();
                 let item = StreamItem::GalleryImage {
                     index,
                     total,
@@ -245,17 +255,28 @@ async fn prerender_gallery() {
                 };
                 let line = serde_json::to_string(&item)
                     .expect("gallery payload serialization cannot fail");
-                ndjson(line)
+                (index, ndjson(line), e.name, elapsed)
             })
             .await
             .expect("gallery prerender task panicked")
         })
-        .buffered(RENDER_CONCURRENCY);
+        .buffer_unordered(RENDER_CONCURRENCY);
+
+    let mut indexed: Vec<(usize, Bytes)> = Vec::with_capacity(total);
+    let pad = total.to_string().len();
+    let mut done_count = 0usize;
+    while let Some((index, line, name, elapsed)) = tasks.next().await {
+        indexed.push((index, line));
+        done_count += 1;
+        println!(
+            "  [{done_count:>pad$}/{total}] {name} ({:.1}s)",
+            elapsed.as_secs_f64(),
+        );
+    }
+    indexed.sort_by_key(|(i, _)| *i);
 
     let mut lines: Vec<Bytes> = Vec::with_capacity(total + 1);
-    while let Some(line) = tasks.next().await {
-        lines.push(line);
-    }
+    lines.extend(indexed.into_iter().map(|(_, line)| line));
     let done =
         serde_json::to_string(&StreamItem::Done).unwrap_or_else(|_| "{\"type\":\"done\"}".into());
     lines.push(ndjson(done));
@@ -376,9 +397,26 @@ type WebpEncoder = fn(&[u8], u32, u32) -> Vec<u8>;
 /// render/mutation cards) and `encode_gallery_webp` (lossy, for the
 /// pre-rendered gallery).
 fn render_to_payload(program_text: &str, size: u32, encoder: WebpEncoder) -> ImagePayload {
+    render_to_payload_logged(program_text, size, encoder, None)
+}
+
+/// Same as `render_to_payload`, but logs failures to stderr with a
+/// caller-supplied label (e.g. the gallery entry name) so prerender
+/// errors aren't silently swallowed into placeholders.
+fn render_to_payload_logged(
+    program_text: &str,
+    size: u32,
+    encoder: WebpEncoder,
+    log_label: Option<&str>,
+) -> ImagePayload {
     match render_roundtrip(program_text, size) {
         Ok((rgba, w, h, jxl_size)) => to_payload(&rgba, w, h, jxl_size, encoder),
-        Err(_) => unsupported_placeholder(),
+        Err(e) => {
+            if let Some(label) = log_label {
+                eprintln!("render failed for {label:?}: {e}");
+            }
+            unsupported_placeholder()
+        }
     }
 }
 
