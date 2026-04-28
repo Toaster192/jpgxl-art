@@ -64,9 +64,14 @@ TMP_SRC=$(mktemp -d)
 TMP_BUILD=$(mktemp -d)
 trap 'rm -rf "$TMP_SRC" "$TMP_BUILD"' EXIT
 
-# Pin libjxl to a known-good commit on `main` so rebuilds are reproducible.
-# Override with `LIBJXL_REV=<sha> ./scripts/build_jxl_from_tree.sh` to bump.
-LIBJXL_REV="${LIBJXL_REV:-05baa5ee5f6af18d3a833079f47b022d3867725a}"
+# Pin libjxl to v0.11.2. We previously tracked `main` for upscaling-header
+# rendering fixes, but the SHA we'd pinned (05baa5ee, April 2026) had an
+# encoder regression where `DeltaPalette + Squeeze + tree-branching-on-c`
+# programs got silently encoded to a 22-byte all-black JXL — affected
+# gallery entries `bg-167` through `bg-173`. v0.11.2 encodes them correctly.
+# Override with `LIBJXL_REV=<sha> ./scripts/build_jxl_from_tree.sh` to test
+# a different revision.
+LIBJXL_REV="${LIBJXL_REV:-332feb17d17311c748445f7ee75c4fb55cc38530}" # v0.11.2
 
 echo "Cloning libjxl @ ${LIBJXL_REV:0:12} (no submodules)..."
 git clone https://github.com/libjxl/libjxl.git "$TMP_SRC" --quiet 2>&1
