@@ -17,6 +17,7 @@ const random20Btn        = document.getElementById('random20-btn');
 const random20SimpleBtn  = document.getElementById('random20-simple-btn');
 const random20ComplexBtn = document.getElementById('random20-complex-btn');
 const galleryBtn         = document.getElementById('gallery-btn');
+const savedBtn           = document.getElementById('saved-btn');
 const errorMsg    = document.getElementById('error-msg');
 const compareBar  = document.getElementById('compare-bar');
 const compareImgs = document.getElementById('compare-images');
@@ -132,6 +133,78 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeZoom();
 });
 
+// ── Saved store (localStorage) ────────────────────────────────────────────────
+
+// Persisted entries each look like:
+//   { id, savedAt, label, programText, jxl_size }
+// We deliberately don't cache the rendered webp here — full-res webp can run
+// hundreds of KB per program, so a handful of saves used to blow the 5MB
+// localStorage quota. Storing only `programText` (a few hundred bytes) lets
+// the saved view fit thousands of entries; opening the view re-renders each
+// program against `/api/render` on demand.
+// Dedup is by `programText`, so clicking ★ on two cards that show the same
+// program toggles a single saved entry.
+const SAVED_KEY = 'artxl.saved.v2';
+let savedIdCounter = 0;
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSaved(arr) {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(arr));
+    return true;
+  } catch (e) {
+    errorMsg.textContent = e && e.name === 'QuotaExceededError'
+      ? 'Save failed: localStorage is full. Remove some saved images first.'
+      : 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
+    return false;
+  }
+}
+
+function findSaved(programText) {
+  if (!programText) return undefined;
+  return loadSaved().find(e => e.programText === programText);
+}
+
+function addSaved({ label, programText, jxl_size }) {
+  const arr = loadSaved();
+  if (arr.some(e => e.programText === programText)) return null;
+  const entry = {
+    id: ++savedIdCounter,
+    savedAt: Date.now(),
+    label,
+    programText,
+    jxl_size: jxl_size ?? 0,
+  };
+  arr.push(entry);
+  if (!persistSaved(arr)) return null;
+  return entry;
+}
+
+function removeSaved(id) {
+  const arr = loadSaved().filter(e => e.id !== id);
+  persistSaved(arr);
+}
+
+// Make sure new ids don't collide with persisted ones across reloads.
+function initSavedIdCounter() {
+  const arr = loadSaved();
+  savedIdCounter = arr.reduce((m, e) => Math.max(m, e.id || 0), 0);
+}
+
+// Drop saves from the previous schema (which embedded full webp_b64 payloads
+// and blew the 5MB localStorage quota). Best-effort; ignored on failure.
+try { localStorage.removeItem('artxl.saved.v1'); } catch {}
+
 // ── Comparison state ──────────────────────────────────────────────────────────
 
 // Maps a unique id → { srcCanvas, el (the .cmp-item div) }
@@ -184,7 +257,7 @@ function unpin(id) {
   pinned.delete(id);
   if (pinned.size === 0) {
     compareBar.style.display = 'none';
-    document.body.style.paddingBottom = '';
+    setBarPadding('');
   } else {
     requestAnimationFrame(syncBarPadding);
   }
@@ -196,8 +269,20 @@ function clearAllPins() {
 
 compareClear.addEventListener('click', clearAllPins);
 
+// In wide layout the body doesn't scroll — the panes do — so the
+// pinned-comparison-bar bottom padding has to be applied to the panes
+// too. Setting it on body as well is harmless in narrow mode (where
+// body is the scroller) and a no-op in wide mode.
+function setBarPadding(value) {
+  document.body.style.paddingBottom = value;
+  const left = document.getElementById('left-pane');
+  const right = document.getElementById('right-pane');
+  if (left) left.style.paddingBottom = value;
+  if (right) right.style.paddingBottom = value;
+}
+
 function syncBarPadding() {
-  document.body.style.paddingBottom = compareBar.offsetHeight + 'px';
+  setBarPadding(compareBar.offsetHeight + 'px');
 }
 
 // ── Streaming fetch ───────────────────────────────────────────────────────────
@@ -229,7 +314,7 @@ async function streamFrom(url, method, body, size = 0) {
     } else if (item.type === 'original') {
       mutationCount = item.mutation_count;
       programEl.value = item.program_text;
-      renderCard(gallery, 'Original', item.image, true, null);
+      renderCard(gallery, 'Original', item.image, true, item.program_text);
       rendered++;
       statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
     } else if (item.type === 'mutation') {
@@ -286,15 +371,17 @@ const allBtns = [
   renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
   randomBtn, randomSimpleBtn, randomComplexBtn,
   random20Btn, random20SimpleBtn, random20ComplexBtn,
-  galleryBtn,
+  galleryBtn, savedBtn,
 ];
 
-let galleryOpen = false;
+let currentMode = 'normal'; // 'normal' | 'gallery' | 'saved'
 
-function resetGalleryToggle() {
+function resetModeToggles() {
   gallery.classList.remove('gallery-mode');
-  galleryOpen = false;
+  if (savedAbort) { savedAbort.abort(); savedAbort = null; }
+  currentMode = 'normal';
   galleryBtn.textContent = 'Gallery';
+  updateSavedBtnLabel();
 }
 
 function withBusy(btn, label, fn) {
@@ -304,7 +391,7 @@ function withBusy(btn, label, fn) {
   errorMsg.textContent = '';
   gallery.innerHTML = '';
   clearAllPins();
-  if (btn !== galleryBtn) resetGalleryToggle();
+  if (btn !== galleryBtn && btn !== savedBtn) resetModeToggles();
   fn().catch(e => { errorMsg.textContent = `Error: ${e.message}`; })
       .finally(() => { allBtns.forEach(b => b.disabled = false); btn.textContent = orig; });
 }
@@ -344,11 +431,105 @@ bindSizes(renderCompoundBtn, renderCompoundPreviewBtn, renderCompoundLargeBtn,
 function openGallery() {
   withBusy(galleryBtn, 'Loading…', async () => {
     gallery.classList.add('gallery-mode');
-    galleryOpen = true;
+    currentMode = 'gallery';
     galleryBtn.textContent = 'Close gallery';
     addGalleryCredit(gallery);
     await streamFrom('/api/gallery', 'GET', null, 0);
   });
+}
+
+// In-flight saved-view renders, cancelled when the view is closed or the
+// user jumps into another mode mid-load.
+let savedAbort = null;
+
+function openSaved() {
+  withBusy(savedBtn, 'Loading…', async () => {
+    gallery.classList.add('gallery-mode');
+    currentMode = 'saved';
+    savedBtn.textContent = 'Close saved';
+    await renderSavedView();
+  });
+}
+
+async function renderSavedView() {
+  const arr = loadSaved().slice().sort((a, b) => b.savedAt - a.savedAt);
+  if (arr.length === 0) {
+    renderSavedEmptyHint();
+    statusEl.textContent = 'No saved images yet.';
+    return;
+  }
+
+  if (savedAbort) savedAbort.abort();
+  const ctrl = new AbortController();
+  savedAbort = ctrl;
+
+  // Pass 1: drop a placeholder card in saved order so the grid is laid
+  // out immediately and individual renders fill in as they complete.
+  const slots = arr.map(e => {
+    const ph = document.createElement('div');
+    ph.className = 'card saved-loading';
+    const info = document.createElement('div');
+    info.className = 'info';
+    const lbl = document.createElement('span');
+    lbl.className = 'label';
+    lbl.textContent = e.label;
+    info.appendChild(lbl);
+    const note = document.createElement('div');
+    note.className = 'saved-note';
+    note.textContent = 'rendering…';
+    info.appendChild(note);
+    ph.appendChild(info);
+    gallery.appendChild(ph);
+    return ph;
+  });
+
+  let done = 0;
+  statusEl.textContent = `Loaded 0 / ${arr.length} saved image(s).`;
+  await Promise.all(arr.map(async (e, idx) => {
+    if (ctrl.signal.aborted) return;
+    try {
+      const payload = await fetchSingleRender(e.programText, ctrl.signal);
+      payload.jxl_size = e.jxl_size ?? 0;
+      if (ctrl.signal.aborted) return;
+      const tmp = document.createElement('div');
+      renderCard(tmp, e.label, payload, false, e.programText);
+      const card = tmp.firstElementChild;
+      if (slots[idx].parentNode === gallery) slots[idx].replaceWith(card);
+    } catch (err) {
+      if (err.name === 'AbortError' || ctrl.signal.aborted) return;
+      const note = slots[idx].querySelector('.saved-note');
+      if (note) {
+        note.textContent = 'render failed';
+        note.classList.add('failed');
+      }
+    } finally {
+      if (!ctrl.signal.aborted) {
+        done++;
+        statusEl.textContent = `Loaded ${done} / ${arr.length} saved image(s).`;
+      }
+    }
+  }));
+
+  if (savedAbort === ctrl) savedAbort = null;
+}
+
+function renderSavedEmptyHint() {
+  const el = document.createElement('div');
+  el.className = 'gallery-empty';
+  el.textContent = 'No saved images yet — click ☆ on any card to save it.';
+  gallery.appendChild(el);
+}
+
+function updateSavedBtnLabel() {
+  const n = loadSaved().length;
+  if (currentMode === 'saved') return; // 'Close saved' takes precedence
+  savedBtn.textContent = n > 0 ? `Saved (${n})` : 'Saved';
+}
+
+function refreshAllSaveButtons() {
+  for (const b of gallery.querySelectorAll('.dl-btn')) {
+    if (typeof b._refreshSaved === 'function') b._refreshSaved();
+  }
 }
 
 function addGalleryCredit(container) {
@@ -362,11 +543,20 @@ function addGalleryCredit(container) {
 }
 
 galleryBtn.addEventListener('click', () => {
-  if (galleryOpen) {
-    resetGalleryToggle();
+  if (currentMode === 'gallery') {
+    resetModeToggles();
     main();
   } else {
     openGallery();
+  }
+});
+
+savedBtn.addEventListener('click', () => {
+  if (currentMode === 'saved') {
+    resetModeToggles();
+    main();
+  } else {
+    openSaved();
   }
 });
 
@@ -409,7 +599,10 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
     info.appendChild(lbl);
   }
 
-  // Download + compare buttons
+  // Two rows: row 1 holds the (wider) downloads with the JXL size at its
+  // end, row 2 holds the secondary icon-only actions. Splitting them keeps
+  // the size pinned to row 1 and gives both rows a similar visual weight,
+  // rather than letting flex-wrap shuffle items unpredictably.
   const dlRow = document.createElement('div');
   dlRow.className = 'dl-row';
 
@@ -443,13 +636,46 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
     dlRow.appendChild(jxlSize);
   }
 
-  const cmpBtn = makeBtn('⊞ compare');
+  const actionRow = document.createElement('div');
+  actionRow.className = 'dl-row';
+
+  const cmpBtn = makeBtn('⊞');
   cmpBtn.title = 'Pin to comparison bar';
   cmpBtn.addEventListener('click', () => togglePin(canvas, label));
-  dlRow.appendChild(cmpBtn);
+  actionRow.appendChild(cmpBtn);
+
+  if (programText) {
+    const saveBtn = makeBtn('');
+    const skin = () => {
+      const saved = !!findSaved(programText);
+      saveBtn.textContent = saved ? '★' : '☆';
+      saveBtn.classList.toggle('saved', saved);
+      saveBtn.title = saved ? 'Remove from saved' : 'Save this image';
+    };
+    skin();
+    saveBtn.addEventListener('click', () => {
+      const existing = findSaved(programText);
+      if (existing) {
+        removeSaved(existing.id);
+      } else if (!addSaved({ label, programText, jxl_size: payload.jxl_size })) {
+        return; // quota / persistence error already surfaced via errorMsg
+      }
+      // Refresh every save button on screen so cards showing the same
+      // program toggle in lockstep, and update the top-right counter.
+      refreshAllSaveButtons();
+      updateSavedBtnLabel();
+      // In saved view, removing means the card itself should disappear.
+      if (currentMode === 'saved' && !findSaved(programText)) {
+        card.remove();
+        if (!gallery.querySelector('.card')) renderSavedEmptyHint();
+      }
+    });
+    saveBtn._refreshSaved = skin;
+    actionRow.appendChild(saveBtn);
+  }
 
   if (zcodeSupported) {
-    const shareBtn = makeBtn('📋 Share');
+    const shareBtn = makeBtn('📋');
     shareBtn.title = 'Copy a permalink to this program to the clipboard';
     shareBtn.addEventListener('click', async () => {
       shareBtn.disabled = true;
@@ -457,55 +683,45 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
         const url = new URL(location.href);
         url.searchParams.set('zcode', await encodeZcode(programText ?? programEl.value));
         await navigator.clipboard.writeText(url.toString());
-        shareBtn.textContent = '✓ Copied';
-        setTimeout(() => { shareBtn.textContent = '📋 Share'; }, 1200);
+        shareBtn.textContent = '✓';
+        setTimeout(() => { shareBtn.textContent = '📋'; }, 1200);
       } catch (e) {
-        shareBtn.textContent = '⚠ Failed';
-        setTimeout(() => { shareBtn.textContent = '📋 Share'; }, 1500);
+        shareBtn.textContent = '⚠';
+        setTimeout(() => { shareBtn.textContent = '📋'; }, 1500);
         console.error('share failed', e);
       } finally {
         shareBtn.disabled = false;
       }
     });
-    dlRow.appendChild(shareBtn);
+    actionRow.appendChild(shareBtn);
   }
 
   info.appendChild(dlRow);
+  info.appendChild(actionRow);
 
-  // Program text toggle + use-as-baseline
-  if (programText) {
-    const actionRow = document.createElement('div');
-    actionRow.className = 'action-row';
-
-    const toggle = document.createElement('a');
-    toggle.href = '#';
-    toggle.className = 'action-link';
-    toggle.textContent = '▶ show program';
+  // Use-as-baseline + show-program toggle. Hidden on the Original card —
+  // the editor already shows that program, so these would duplicate state.
+  if (programText && !isOriginal) {
+    const useBtn = makeBtn('↑');
+    useBtn.title = 'Use as baseline (copy program to the editor)';
+    useBtn.addEventListener('click', () => {
+      programEl.value = programText;
+      programEl.scrollIntoView({ behavior: 'smooth' });
+    });
+    actionRow.appendChild(useBtn);
 
     const pre = document.createElement('pre');
     pre.className = 'program-pre';
     pre.textContent = programText;
 
-    toggle.addEventListener('click', e => {
-      e.preventDefault();
+    const toggleBtn = makeBtn('▶');
+    toggleBtn.title = 'Show program text';
+    toggleBtn.addEventListener('click', () => {
       const visible = pre.classList.toggle('show');
-      toggle.textContent = (visible ? '▼' : '▶') + ' show program';
+      toggleBtn.textContent = visible ? '▼' : '▶';
     });
+    actionRow.appendChild(toggleBtn);
 
-    const useBtn = document.createElement('a');
-    useBtn.href = '#';
-    useBtn.className = 'action-link use';
-    useBtn.textContent = '↑ use as baseline';
-    useBtn.title = 'Copy this program to the editor for further mutations';
-    useBtn.addEventListener('click', e => {
-      e.preventDefault();
-      programEl.value = programText;
-      programEl.scrollIntoView({ behavior: 'smooth' });
-    });
-
-    actionRow.appendChild(toggle);
-    actionRow.appendChild(useBtn);
-    info.appendChild(actionRow);
     info.appendChild(pre);
   }
 
@@ -598,4 +814,6 @@ async function decodeZcode(zcode) {
 const zcodeSupported = typeof CompressionStream !== 'undefined'
   && typeof DecompressionStream !== 'undefined';
 
+initSavedIdCounter();
+updateSavedBtnLabel();
 main();

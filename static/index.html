@@ -65,7 +65,7 @@
     }
     .render-btn:hover { background: #333; }
     .render-btn:disabled { opacity: 0.5; cursor: default; }
-    #random-btn, #random20-btn, #gallery-btn {
+    #random-btn, #random20-btn, #gallery-btn, #saved-btn {
       padding: 0.4rem 1rem;
       background: #1a2a1a;
       border: 1px solid #4a7a4a;
@@ -75,12 +75,14 @@
       font-family: monospace;
       font-size: 0.85rem;
     }
-    #random-btn:hover, #random20-btn:hover, #gallery-btn:hover { background: #1f321f; }
-    #random-btn:disabled, #random20-btn:disabled, #gallery-btn:disabled { opacity: 0.5; cursor: default; }
-    #gallery-btn {
+    #random-btn:hover, #random20-btn:hover, #gallery-btn:hover, #saved-btn:hover { background: #1f321f; }
+    #random-btn:disabled, #random20-btn:disabled, #gallery-btn:disabled, #saved-btn:disabled { opacity: 0.5; cursor: default; }
+    #top-right-btns {
       position: absolute;
       top: 1rem;
       right: 1rem;
+      display: flex;
+      gap: 0.5rem;
       z-index: 10;
     }
     .btn-row {
@@ -125,6 +127,25 @@
     }
     .dl-btn:hover { background: #2a2a2a; color: #eee; }
     .dl-btn:disabled { opacity: 0.4; cursor: default; }
+    .dl-btn.saved {
+      color: #e6c34a;
+      border-color: #5a4a1a;
+      background: #1f1a0a;
+    }
+    .dl-btn.saved:hover { background: #2a2410; color: #ffd75a; }
+    .gallery-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: #888;
+      padding: 2.5rem 1rem;
+      font-size: 0.9rem;
+    }
+    .card.saved-loading .saved-note {
+      color: #666;
+      font-size: 0.75rem;
+      margin-top: 4px;
+    }
+    .card.saved-loading .saved-note.failed { color: #e06c75; }
     /* ── Card internals (built by renderCard in app.js) ─────────────────── */
     .card .dl-row {
       display: flex;
@@ -137,19 +158,6 @@
       font-size: 0.7rem;
       color: #666;
       align-self: center;
-    }
-    .card .action-row {
-      display: flex;
-      gap: 8px;
-      align-items: baseline;
-      margin-top: 4px;
-    }
-    .card .action-link {
-      font-size: 0.7rem;
-      color: #666;
-    }
-    .card .action-link.use {
-      color: #4ec9b0;
     }
     .card .program-pre {
       display: none;
@@ -274,50 +282,91 @@
       transition: opacity 0.15s;
     }
     #zoom-status.show { opacity: 1; }
+    /* ── Wide-screen two-column layout ──────────────────────────────────── */
+    @media (min-width: 1000px) and (orientation: landscape) {
+      body {
+        height: 100vh;
+        overflow: hidden;
+        padding: 0;
+      }
+      #layout {
+        display: grid;
+        grid-template-columns: minmax(360px, 32%) 1fr;
+        gap: 1rem;
+        height: 100vh;
+        padding: 1rem;
+      }
+      #left-pane,
+      #right-pane {
+        overflow-y: auto;
+        min-height: 0;
+        padding-right: 0.5rem;
+      }
+      #left-pane {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      #editor-wrap { flex: 1 1 auto; min-height: 0; }
+      textarea#program {
+        flex: 1 1 auto;
+        min-height: 200px;
+        resize: none;
+      }
+    }
   </style>
 </head>
 <body>
-  <button id="gallery-btn">Gallery</button>
-  <h1>ArtXL — tree-based image mutation</h1>
-  <p id="status">Loading…</p>
-
-  <h2>Program</h2>
-  <div id="editor-wrap">
-    <textarea id="program" spellcheck="false"></textarea>
-    <div class="btn-row">
-      <div class="btn-group">
-        <button id="render-single-btn" class="render-btn">Render</button>
-        <button id="render-single-preview-btn" class="preview-btn">320px</button>
-        <button id="render-single-large-btn" class="preview-btn">2048px</button>
-      </div>
-      <div class="btn-group">
-        <button id="render-btn" class="render-btn">Render + mutations</button>
-        <button id="render-preview-btn" class="preview-btn">320px</button>
-        <button id="render-large-btn" class="preview-btn">2048px</button>
-      </div>
-      <div class="btn-group">
-        <button id="render-compound-btn" class="render-btn">Render + 20 compound</button>
-        <button id="render-compound-preview-btn" class="preview-btn">320px</button>
-        <button id="render-compound-large-btn" class="preview-btn">2048px</button>
-      </div>
-    </div>
-    <div class="btn-row">
-      <div class="btn-group">
-        <button id="random-btn">Randomize</button>
-        <button id="random-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
-        <button id="random-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
-      </div>
-      <div class="btn-group">
-        <button id="random20-btn">Randomize 20</button>
-        <button id="random20-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
-        <button id="random20-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
-      </div>
-    </div>
-    <div id="error-msg"></div>
+  <div id="top-right-btns">
+    <button id="saved-btn">Saved</button>
+    <button id="gallery-btn">Gallery</button>
   </div>
+  <div id="layout">
+    <div id="left-pane">
+      <h1>ArtXL — tree-based image mutation</h1>
+      <p id="status">Loading…</p>
 
-  <h2>Rendered images</h2>
-  <div id="gallery"></div>
+      <h2>Program</h2>
+      <div id="editor-wrap">
+        <textarea id="program" spellcheck="false"></textarea>
+        <div class="btn-row">
+          <div class="btn-group">
+            <button id="render-single-btn" class="render-btn">Render</button>
+            <button id="render-single-preview-btn" class="preview-btn">320px</button>
+            <button id="render-single-large-btn" class="preview-btn">2048px</button>
+          </div>
+          <div class="btn-group">
+            <button id="render-btn" class="render-btn">Render + mutations</button>
+            <button id="render-preview-btn" class="preview-btn">320px</button>
+            <button id="render-large-btn" class="preview-btn">2048px</button>
+          </div>
+          <div class="btn-group">
+            <button id="render-compound-btn" class="render-btn">Render + 20 compound</button>
+            <button id="render-compound-preview-btn" class="preview-btn">320px</button>
+            <button id="render-compound-large-btn" class="preview-btn">2048px</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <div class="btn-group">
+            <button id="random-btn">Randomize</button>
+            <button id="random-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
+            <button id="random-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
+          </div>
+          <div class="btn-group">
+            <button id="random20-btn">Randomize 20</button>
+            <button id="random20-simple-btn" class="preview-btn" title="Smaller decision tree">Simple</button>
+            <button id="random20-complex-btn" class="preview-btn" title="Deeper decision tree">Complex</button>
+          </div>
+        </div>
+        <div id="error-msg"></div>
+      </div>
+    </div>
+
+    <div id="right-pane">
+      <h2>Rendered images</h2>
+      <div id="gallery"></div>
+    </div>
+  </div>
 
   <!-- Comparison bar (fixed, bottom of viewport) -->
   <div id="compare-bar">
@@ -334,6 +383,6 @@
     <div id="zoom-status"></div>
   </div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
