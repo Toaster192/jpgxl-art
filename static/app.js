@@ -1,3 +1,18 @@
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+// Render-size knobs surfaced via the side buttons next to each Render group.
+// `0` (used elsewhere) means native resolution; these two are the explicit
+// downscale and upscale targets respectively.
+const PREVIEW_SIZE = 320;
+const LARGE_SIZE = 2048;
+const KB = 1024;
+const MB = KB * 1024;
+
+// Editor-draft persistence — see the "Editor draft" section below for the
+// flag-and-debounce that backs this.
+const DRAFT_KEY = 'artxl.editor.draft';
+const DRAFT_DEBOUNCE_MS = 500;
+
 const statusEl    = document.getElementById('status');
 const gallery     = document.getElementById('gallery');
 const programEl   = document.getElementById('program');
@@ -25,6 +40,52 @@ const compareClear = document.getElementById('compare-clear');
 const zoomModal   = document.getElementById('zoom-modal');
 const zoomCanvas  = document.getElementById('zoom-canvas');
 const zoomStatus  = document.getElementById('zoom-status');
+
+// ── Editor draft (localStorage) ───────────────────────────────────────────────
+
+// The textarea content is persisted to localStorage on every input (debounced)
+// and restored on page load — so a refresh in the middle of an edit doesn't
+// lose work. We do NOT auto-render the restored draft; the user clicks Render.
+//
+// `initialLoadDraftRestored` records whether we restored a draft on this load
+// so the first /api/generate stream's "original" item doesn't clobber it.
+
+function saveDraft(text) {
+  try { localStorage.setItem(DRAFT_KEY, text); } catch {}
+}
+
+function loadDraft() {
+  try { return localStorage.getItem(DRAFT_KEY); } catch { return null; }
+}
+
+/// Set the textarea programmatically and persist the new value as the draft.
+/// Use this instead of `programEl.value = …` whenever code (not the user)
+/// updates the editor — `input` events don't fire on programmatic writes,
+/// so without this the draft would diverge from what's actually shown.
+function setProgram(text) {
+  programEl.value = text;
+  saveDraft(text);
+}
+
+let draftSaveTimer = null;
+programEl.addEventListener('input', () => {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => saveDraft(programEl.value), DRAFT_DEBOUNCE_MS);
+});
+
+let initialLoadDraftRestored = false;
+{
+  // A `?zcode=…` permalink should always trump the saved draft — the user
+  // is trying to view that specific program. Without this guard, opening
+  // a share link in a browser that already has a draft would silently show
+  // the draft instead of the linked program.
+  const zcode = new URLSearchParams(location.search).get('zcode');
+  const draft = loadDraft();
+  if (draft && !zcode) {
+    programEl.value = draft;
+    initialLoadDraftRestored = true;
+  }
+}
 
 // ── Zoom modal ─────────────────────────────────────────────────────────────────
 
@@ -313,7 +374,15 @@ async function streamFrom(url, method, body, size = 0) {
       if (rendered === item.total) statusEl.textContent = `Generated ${rendered} random images.`;
     } else if (item.type === 'original') {
       mutationCount = item.mutation_count;
-      programEl.value = item.program_text;
+      // First-load restoration: the draft was put into the textarea on
+      // page load, so the very first 'original' item shouldn't clobber
+      // it. Subsequent renders (user typed and clicked Render) get the
+      // normal sync.
+      if (initialLoadDraftRestored) {
+        initialLoadDraftRestored = false;
+      } else {
+        setProgram(item.program_text);
+      }
       renderCard(gallery, 'Original', item.image, true, item.program_text);
       rendered++;
       statusEl.textContent = `Rendering… (${rendered} / ${mutationCount + 1})`;
@@ -398,8 +467,8 @@ function withBusy(btn, label, fn) {
 
 function bindSizes(btn, previewBtn, largeBtn, busy, url, method, body) {
   btn.addEventListener('click',        () => withBusy(btn,        busy, () => streamFrom(url, method, body(), 0)));
-  previewBtn.addEventListener('click', () => withBusy(previewBtn, '…', () => streamFrom(url, method, body(), 320)));
-  largeBtn.addEventListener('click',   () => withBusy(largeBtn,   '…', () => streamFrom(url, method, body(), 2048)));
+  previewBtn.addEventListener('click', () => withBusy(previewBtn, '…', () => streamFrom(url, method, body(), PREVIEW_SIZE)));
+  largeBtn.addEventListener('click',   () => withBusy(largeBtn,   '…', () => streamFrom(url, method, body(), LARGE_SIZE)));
 }
 
 // Random-program generators don't take a render-size knob (rendered at the
@@ -562,7 +631,27 @@ savedBtn.addEventListener('click', () => {
 
 // ── Card rendering ────────────────────────────────────────────────────────────
 
-function renderCard(container, label, payload, isOriginal, programText, warning, hideLabel) {
+// `renderCard` is a thin orchestrator over the helpers below. The split
+// keeps each concern (canvas + label, downloads, secondary actions, program
+// toggle) under ~30 lines — easier to reason about than one ~170-line
+// function and lets each helper grow without bloating the others.
+
+function renderCard(container, label, payload, isOriginal, programText, _warning, hideLabel) {
+  const { card, canvas, info } = buildCardChrome(label, payload, isOriginal, hideLabel);
+  attachZoom(canvas, programText, hideLabel);
+
+  // Two rows in the info block: row 1 = downloads + JXL size, row 2 =
+  // secondary actions. Splitting them stops flex-wrap from reshuffling
+  // items unpredictably and pins the size to its download.
+  info.appendChild(buildDownloadRow(canvas, label, payload, programText));
+  info.appendChild(buildActionRow({ card, canvas, label, payload, programText, isOriginal, info }));
+
+  card.appendChild(canvas);
+  card.appendChild(info);
+  container.appendChild(card);
+}
+
+function buildCardChrome(label, payload, isOriginal, hideLabel) {
   const card = document.createElement('div');
   card.className = 'card';
 
@@ -573,15 +662,6 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   const img = new Image();
   img.onload = () => ctx.drawImage(img, 0, 0);
   img.src = 'data:image/webp;base64,' + payload.webp_b64;
-
-  // Gallery thumbnails are downsampled server-side, so on zoom we kick off
-  // a native-resolution render in the background. `hideLabel` is the
-  // gallery-only flag — mutation / randomize cards keep the simple zoom.
-  // Stash the program text on the canvas so pinned copies in the compare
-  // bar can also trigger the upgrade.
-  canvas._fullResProgram = hideLabel ? programText : null;
-  canvas.title = 'Click to zoom';
-  canvas.addEventListener('click', () => showZoom(canvas, canvas._fullResProgram));
 
   const info = document.createElement('div');
   info.className = 'info';
@@ -598,11 +678,21 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
     }
     info.appendChild(lbl);
   }
+  return { card, canvas, info };
+}
 
-  // Two rows: row 1 holds the (wider) downloads with the JXL size at its
-  // end, row 2 holds the secondary icon-only actions. Splitting them keeps
-  // the size pinned to row 1 and gives both rows a similar visual weight,
-  // rather than letting flex-wrap shuffle items unpredictably.
+// Gallery thumbnails are downsampled server-side, so on zoom we kick off a
+// native-resolution render in the background. `hideLabel` is the gallery-only
+// flag — mutation / randomize cards keep the simple zoom. Stashing the
+// program text on the canvas lets pinned copies in the compare bar trigger
+// the upgrade as well.
+function attachZoom(canvas, programText, hideLabel) {
+  canvas._fullResProgram = hideLabel ? programText : null;
+  canvas.title = 'Click to zoom';
+  canvas.addEventListener('click', () => showZoom(canvas, canvas._fullResProgram));
+}
+
+function buildDownloadRow(canvas, label, payload, programText) {
   const dlRow = document.createElement('div');
   dlRow.className = 'dl-row';
 
@@ -610,10 +700,10 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   pngBtn.addEventListener('click', () => downloadPng(canvas, label));
   dlRow.appendChild(pngBtn);
 
-  // Server pre-computes jxl_size in the payload (it already has the
-  // JXL bytes from the render roundtrip), so we show it immediately
-  // without a second subprocess round-trip. 0 means the encoder
-  // couldn't produce anything — hide the JXL button in that case.
+  // Server pre-computes jxl_size in the payload (it already has the JXL
+  // bytes from the render roundtrip), so we show it immediately. 0 means
+  // the encoder couldn't produce anything — hide the JXL button in that
+  // case.
   const jxlSizeValue = payload.jxl_size ?? 0;
   if (jxlSizeValue > 0) {
     const jxlBtn = makeBtn('↓ JXL');
@@ -635,7 +725,10 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
     dlRow.appendChild(jxlBtn);
     dlRow.appendChild(jxlSize);
   }
+  return dlRow;
+}
 
+function buildActionRow({ card, canvas, label, payload, programText, isOriginal, info }) {
   const actionRow = document.createElement('div');
   actionRow.className = 'dl-row';
 
@@ -645,89 +738,99 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   actionRow.appendChild(cmpBtn);
 
   if (programText) {
-    const saveBtn = makeBtn('');
-    const skin = () => {
-      const saved = !!findSaved(programText);
-      saveBtn.textContent = saved ? '★' : '☆';
-      saveBtn.classList.toggle('saved', saved);
-      saveBtn.title = saved ? 'Remove from saved' : 'Save this image';
-    };
-    skin();
-    saveBtn.addEventListener('click', () => {
-      const existing = findSaved(programText);
-      if (existing) {
-        removeSaved(existing.id);
-      } else if (!addSaved({ label, programText, jxl_size: payload.jxl_size })) {
-        return; // quota / persistence error already surfaced via errorMsg
-      }
-      // Refresh every save button on screen so cards showing the same
-      // program toggle in lockstep, and update the top-right counter.
-      refreshAllSaveButtons();
-      updateSavedBtnLabel();
-      // In saved view, removing means the card itself should disappear.
-      if (currentMode === 'saved' && !findSaved(programText)) {
-        card.remove();
-        if (!gallery.querySelector('.card')) renderSavedEmptyHint();
-      }
-    });
-    saveBtn._refreshSaved = skin;
-    actionRow.appendChild(saveBtn);
+    actionRow.appendChild(buildSaveButton(card, label, payload, programText));
   }
 
   if (zcodeSupported) {
-    const shareBtn = makeBtn('📋');
-    shareBtn.title = 'Copy a permalink to this program to the clipboard';
-    shareBtn.addEventListener('click', async () => {
-      shareBtn.disabled = true;
-      try {
-        const url = new URL(location.href);
-        url.searchParams.set('zcode', await encodeZcode(programText ?? programEl.value));
-        await navigator.clipboard.writeText(url.toString());
-        shareBtn.textContent = '✓';
-        setTimeout(() => { shareBtn.textContent = '📋'; }, 1200);
-      } catch (e) {
-        shareBtn.textContent = '⚠';
-        setTimeout(() => { shareBtn.textContent = '📋'; }, 1500);
-        console.error('share failed', e);
-      } finally {
-        shareBtn.disabled = false;
-      }
-    });
-    actionRow.appendChild(shareBtn);
+    actionRow.appendChild(buildShareButton(programText));
   }
-
-  info.appendChild(dlRow);
-  info.appendChild(actionRow);
 
   // Use-as-baseline + show-program toggle. Hidden on the Original card —
   // the editor already shows that program, so these would duplicate state.
   if (programText && !isOriginal) {
-    const useBtn = makeBtn('↑');
-    useBtn.title = 'Use as baseline (copy program to the editor)';
-    useBtn.addEventListener('click', () => {
-      programEl.value = programText;
-      programEl.scrollIntoView({ behavior: 'smooth' });
-    });
-    actionRow.appendChild(useBtn);
-
-    const pre = document.createElement('pre');
-    pre.className = 'program-pre';
-    pre.textContent = programText;
-
-    const toggleBtn = makeBtn('▶');
-    toggleBtn.title = 'Show program text';
-    toggleBtn.addEventListener('click', () => {
-      const visible = pre.classList.toggle('show');
-      toggleBtn.textContent = visible ? '▼' : '▶';
-    });
+    actionRow.appendChild(buildUseButton(programText));
+    const { toggleBtn, pre } = buildProgramToggle(programText);
     actionRow.appendChild(toggleBtn);
-
     info.appendChild(pre);
   }
 
-  card.appendChild(canvas);
-  card.appendChild(info);
-  container.appendChild(card);
+  return actionRow;
+}
+
+function buildSaveButton(card, label, payload, programText) {
+  const saveBtn = makeBtn('');
+  const skin = () => {
+    const saved = !!findSaved(programText);
+    saveBtn.textContent = saved ? '★' : '☆';
+    saveBtn.classList.toggle('saved', saved);
+    saveBtn.title = saved ? 'Remove from saved' : 'Save this image';
+  };
+  skin();
+  saveBtn.addEventListener('click', () => {
+    const existing = findSaved(programText);
+    if (existing) {
+      removeSaved(existing.id);
+    } else if (!addSaved({ label, programText, jxl_size: payload.jxl_size })) {
+      return; // quota / persistence error already surfaced via errorMsg
+    }
+    // Refresh every save button on screen so cards showing the same
+    // program toggle in lockstep, and update the top-right counter.
+    refreshAllSaveButtons();
+    updateSavedBtnLabel();
+    // In saved view, removing means the card itself should disappear.
+    if (currentMode === 'saved' && !findSaved(programText)) {
+      card.remove();
+      if (!gallery.querySelector('.card')) renderSavedEmptyHint();
+    }
+  });
+  saveBtn._refreshSaved = skin;
+  return saveBtn;
+}
+
+function buildShareButton(programText) {
+  const shareBtn = makeBtn('📋');
+  shareBtn.title = 'Copy a permalink to this program to the clipboard';
+  shareBtn.addEventListener('click', async () => {
+    shareBtn.disabled = true;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('zcode', await encodeZcode(programText ?? programEl.value));
+      await navigator.clipboard.writeText(url.toString());
+      shareBtn.textContent = '✓';
+      setTimeout(() => { shareBtn.textContent = '📋'; }, 1200);
+    } catch (e) {
+      shareBtn.textContent = '⚠';
+      setTimeout(() => { shareBtn.textContent = '📋'; }, 1500);
+      console.error('share failed', e);
+    } finally {
+      shareBtn.disabled = false;
+    }
+  });
+  return shareBtn;
+}
+
+function buildUseButton(programText) {
+  const useBtn = makeBtn('↑');
+  useBtn.title = 'Use as baseline (copy program to the editor)';
+  useBtn.addEventListener('click', () => {
+    setProgram(programText);
+    programEl.scrollIntoView({ behavior: 'smooth' });
+  });
+  return useBtn;
+}
+
+function buildProgramToggle(programText) {
+  const pre = document.createElement('pre');
+  pre.className = 'program-pre';
+  pre.textContent = programText;
+
+  const toggleBtn = makeBtn('▶');
+  toggleBtn.title = 'Show program text';
+  toggleBtn.addEventListener('click', () => {
+    const visible = pre.classList.toggle('show');
+    toggleBtn.textContent = visible ? '▼' : '▶';
+  });
+  return { toggleBtn, pre };
 }
 
 function addSectionHeader(container, text) {
@@ -765,9 +868,9 @@ async function downloadJxl(programText, label) {
 }
 
 function fmtBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  if (n < KB) return `${n} B`;
+  if (n < MB) return `${(n / KB).toFixed(1)} KB`;
+  return `${(n / MB).toFixed(2)} MB`;
 }
 
 function slugify(s) {

@@ -102,6 +102,7 @@ pub fn random_program(complexity: Complexity) -> ImageProgram {
 pub fn random_program_non_degenerate(complexity: Complexity) -> ImageProgram {
     const MAX_TRIES: usize = 10;
     const CHEAP_REROLLS: usize = MAX_TRIES - 3;
+    let mut rng = rand::thread_rng();
     let mut prog = random_program(complexity);
     for attempt in 0..MAX_TRIES {
         let text = prog.to_text();
@@ -110,7 +111,6 @@ pub fn random_program_non_degenerate(complexity: Complexity) -> ImageProgram {
                 return prog;
             }
         }
-        let mut rng = rand::thread_rng();
         if attempt < CHEAP_REROLLS {
             prog.rct = Some(random_rct(&mut rng));
             prog.extra_headers = random_headers(&mut rng);
@@ -180,6 +180,16 @@ pub enum Mutation {
     RemoveBranch,
     /// Replace root with its TRUE child.
     PromoteTrueBranch,
+    /// Pick any If in the tree (not just root) and replace it with its
+    /// FALSE child. Generalises `RemoveBranch`.
+    RemoveBranchAt,
+    /// Pick any If in the tree (not just root) and replace it with its
+    /// TRUE child. Generalises `PromoteTrueBranch`.
+    PromoteTrueAt,
+    /// Swap two subtrees within the program. Both subtrees must lie on
+    /// disjoint root-paths (neither is an ancestor of the other) — small
+    /// trees may have no valid pair, in which case this is a no-op.
+    SwapSubtrees,
     /// Split a random Predict leaf into a new If with two leaves.
     /// Complements root-only `AddBranch`.
     InsertIfAtLeaf,
@@ -217,7 +227,7 @@ pub fn random_compounds(n: usize) -> Vec<Mutation> {
 fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
     let mag: f64 = rng.gen_range(0.10..=0.50);
     let scale = if rng.gen_bool(0.5) { mag } else { -mag };
-    match rng.gen_range(0..12u8) {
+    match rng.gen_range(0..15u8) {
         0 => Mutation::TweakThreshold { scale },
         1 => Mutation::NegateThreshold,
         2 => Mutation::SwapConditionVar,
@@ -229,6 +239,9 @@ fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
         8 => Mutation::ToggleHeader,
         9 => Mutation::SwapPredictorExotic,
         10 => Mutation::InsertIfAtLeaf,
+        11 => Mutation::RemoveBranchAt,
+        12 => Mutation::PromoteTrueAt,
+        13 => Mutation::SwapSubtrees,
         _ => Mutation::ReplaceSubtreeRandom,
     }
 }
@@ -256,6 +269,9 @@ impl Mutation {
             Mutation::AddBranch => "Add branch".into(),
             Mutation::RemoveBranch => "Remove branch".into(),
             Mutation::PromoteTrueBranch => "Promote true branch".into(),
+            Mutation::RemoveBranchAt => "Remove branch (deep)".into(),
+            Mutation::PromoteTrueAt => "Promote true branch (deep)".into(),
+            Mutation::SwapSubtrees => "Swap subtrees".into(),
             Mutation::InsertIfAtLeaf => "Insert if at leaf".into(),
             Mutation::ReplaceSubtreeRandom => "Replace subtree".into(),
             Mutation::CycleRct => "Cycle RCT".into(),
@@ -280,6 +296,9 @@ impl Mutation {
             AddBranch,
             RemoveBranch,
             PromoteTrueBranch,
+            RemoveBranchAt,
+            PromoteTrueAt,
+            SwapSubtrees,
             InsertIfAtLeaf,
             ReplaceSubtreeRandom,
             // ── Predictor / value ─────────────────────────────────────────────
@@ -413,6 +432,46 @@ impl Mutation {
                     Node::If { on_true, .. } => *on_true,
                     leaf => leaf,
                 };
+            }
+            Mutation::RemoveBranchAt => {
+                let n_ifs = count_conditions(&prog.root);
+                if n_ifs == 0 {
+                    return prog;
+                }
+                let n = rng.gen_range(0..n_ifs);
+                collapse_nth_if(&mut prog.root, n, &mut 0, false);
+            }
+            Mutation::PromoteTrueAt => {
+                let n_ifs = count_conditions(&prog.root);
+                if n_ifs == 0 {
+                    return prog;
+                }
+                let n = rng.gen_range(0..n_ifs);
+                collapse_nth_if(&mut prog.root, n, &mut 0, true);
+            }
+            Mutation::SwapSubtrees => {
+                let mut paths: Vec<Vec<bool>> = Vec::new();
+                collect_node_paths(&prog.root, &mut Vec::new(), &mut paths);
+                if paths.len() < 2 {
+                    return prog;
+                }
+                // A few rejection-sampling attempts; small trees may have no
+                // valid disjoint pair (e.g. only root + two leaves), in which
+                // case we fall through to the no-op path.
+                for _ in 0..16 {
+                    let i = rng.gen_range(0..paths.len());
+                    let j = rng.gen_range(0..paths.len());
+                    if i == j {
+                        continue;
+                    }
+                    let a = paths[i].clone();
+                    let b = paths[j].clone();
+                    if is_path_ancestor(&a, &b) || is_path_ancestor(&b, &a) {
+                        continue;
+                    }
+                    swap_subtrees_at(&mut prog.root, &a, &b);
+                    return prog;
+                }
             }
             Mutation::InsertIfAtLeaf => {
                 let n_leaves = count_predictors(&prog.root);
@@ -771,6 +830,94 @@ fn replace_nth_node(node: &mut Node, n: usize, seen: &mut usize, f: &mut dyn FnM
         replace_nth_node(on_true, n, seen, f);
         replace_nth_node(on_false, n, seen, f);
     }
+}
+
+/// Replace the n-th If (pre-order DFS) with one of its children. If
+/// `take_true` is true the If is replaced by `on_true`; otherwise by
+/// `on_false`. Used by `RemoveBranchAt` / `PromoteTrueAt`.
+fn collapse_nth_if(node: &mut Node, n: usize, seen: &mut usize, take_true: bool) -> bool {
+    if !matches!(node, Node::If { .. }) {
+        return false;
+    }
+    let idx = *seen;
+    *seen += 1;
+    if idx == n {
+        let old = std::mem::replace(node, Node::Predict(Predictor::Set(0)));
+        if let Node::If {
+            on_true, on_false, ..
+        } = old
+        {
+            *node = if take_true { *on_true } else { *on_false };
+        }
+        return true;
+    }
+    if let Node::If {
+        on_true, on_false, ..
+    } = node
+    {
+        if collapse_nth_if(on_true, n, seen, take_true) {
+            return true;
+        }
+        if collapse_nth_if(on_false, n, seen, take_true) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Walk the tree in pre-order, recording the boolean path
+/// (`true` = on_true, `false` = on_false) from the root to every node
+/// (including the root, whose path is empty).
+fn collect_node_paths(node: &Node, prefix: &mut Vec<bool>, out: &mut Vec<Vec<bool>>) {
+    out.push(prefix.clone());
+    if let Node::If {
+        on_true, on_false, ..
+    } = node
+    {
+        prefix.push(true);
+        collect_node_paths(on_true, prefix, out);
+        prefix.pop();
+        prefix.push(false);
+        collect_node_paths(on_false, prefix, out);
+        prefix.pop();
+    }
+}
+
+/// True iff `a` is a strict prefix of `b` — i.e. `a` is an ancestor of `b`
+/// in the tree. Used to reject swap-subtree pairs that overlap.
+fn is_path_ancestor(a: &[bool], b: &[bool]) -> bool {
+    a.len() < b.len() && b.starts_with(a)
+}
+
+fn get_subtree_mut<'a>(root: &'a mut Node, path: &[bool]) -> &'a mut Node {
+    let mut cur = root;
+    for &dir in path {
+        cur = match cur {
+            Node::If {
+                on_true, on_false, ..
+            } => {
+                if dir {
+                    on_true
+                } else {
+                    on_false
+                }
+            }
+            // collect_node_paths only emits paths reachable in the tree, so
+            // this is unreachable for any path it produced.
+            _ => unreachable!("path runs past a leaf"),
+        };
+    }
+    cur
+}
+
+fn swap_subtrees_at(root: &mut Node, a: &[bool], b: &[bool]) {
+    // Two sequential mut borrows of `root`, broken by the std::mem::replace
+    // call that returns ownership of the prior subtree. The placeholder is
+    // a cheap leaf that gets overwritten on the second pass.
+    let placeholder = Node::Predict(Predictor::Set(0));
+    let subtree_a = std::mem::replace(get_subtree_mut(root, a), placeholder);
+    let subtree_b = std::mem::replace(get_subtree_mut(root, b), subtree_a);
+    *get_subtree_mut(root, a) = subtree_b;
 }
 
 /// Add `delta` to every non-Set predictor offset in the tree.

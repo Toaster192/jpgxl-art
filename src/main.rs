@@ -1,13 +1,9 @@
-mod codec;
-mod gallery;
-mod mutations;
-mod render;
-mod tree;
+use artxl::{gallery, mutations, render, tree};
 
 use axum::{
     body::Body,
     body::Bytes,
-    extract::Query,
+    extract::{DefaultBodyLimit, Query},
     http::{header, HeaderMap, StatusCode},
     response::Response,
     routing::get,
@@ -32,11 +28,27 @@ const GALLERY_MAX_DIM: u32 = 768;
 /// lossy stays visually clean at card size while shrinking ~8×.
 const GALLERY_WEBP_QUALITY: f32 = 75.0;
 
-/// Cap on concurrent `spawn_blocking` render tasks. Each native-res JXL
-/// decode owns ~w*h*7 bytes while Lanczos resize runs (2160×3840 entries
-/// like `bg-024-erosion-and-shadows` peak around ~65MB). 8 keeps peak
-/// under ~600MB during prerender while saturating a typical 8-core box.
-const RENDER_CONCURRENCY: usize = 8;
+/// Cap on concurrent `spawn_blocking` render tasks. Scales to the host's
+/// detected core count so the same binary saturates the 7-core dev box
+/// and the 8-core VPS without a recompile. Each native-res JXL decode
+/// owns ~w*h*7 bytes while Lanczos resize runs (2160×3840 entries like
+/// `bg-024-erosion-and-shadows` peak around ~65MB), so peak memory grows
+/// linearly with this number — keep an eye on it if deploying to a box
+/// with significantly more cores than RAM headroom.
+fn render_concurrency() -> usize {
+    static N: OnceLock<usize> = OnceLock::new();
+    *N.get_or_init(|| {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+    })
+}
+
+/// Per-route body cap for POST endpoints. Largest gallery program (~21
+/// KB for `34-surma-complex.jxlart`) sets the floor; 256 KiB leaves
+/// headroom for hand-edited monsters without inviting `program_text`
+/// abuse.
+const MAX_BODY_BYTES: usize = 256 * 1024;
 
 use mutations::{
     is_degenerate, random_compounds, random_program_non_degenerate, Complexity, Mutation,
@@ -149,7 +161,7 @@ async fn random_batch(Query(q): Query<RandomQuery>) -> Response {
                 })
                 .await
             })
-            .buffer_unordered(RENDER_CONCURRENCY);
+            .buffer_unordered(render_concurrency());
 
         while let Some(Ok((index, program_text, image))) = unordered.next().await {
             send_item(
@@ -260,7 +272,7 @@ async fn prerender_gallery() {
             .await
             .expect("gallery prerender task panicked")
         })
-        .buffer_unordered(RENDER_CONCURRENCY);
+        .buffer_unordered(render_concurrency());
 
     let mut indexed: Vec<(usize, Bytes)> = Vec::with_capacity(total);
     let pad = total.to_string().len();
@@ -506,7 +518,7 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
                     .await
                 }
             })
-            .buffered(RENDER_CONCURRENCY);
+            .buffered(render_concurrency());
 
         if let Ok((program_text, image)) = orig_handle.await {
             send_item(
@@ -620,11 +632,11 @@ fn main() {
     // Tokio's default blocking pool is 512 threads. Each gets its own glibc
     // malloc arena, which holds onto freed memory indefinitely (per-thread
     // arena fragmentation). Since our per-request blocking work is capped at
-    // RENDER_CONCURRENCY, there's no reason to let hundreds of idle threads
+    // render_concurrency(), there's no reason to let hundreds of idle threads
     // hoard multi-GB of returned-but-not-returned-to-OS allocations.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .max_blocking_threads(RENDER_CONCURRENCY * 2)
+        .max_blocking_threads(render_concurrency() * 2)
         .build()
         .expect("build tokio runtime");
 
@@ -639,6 +651,7 @@ fn main() {
             .route("/api/render", post(render))
             .route("/api/download/png", post(download_png))
             .route("/api/download/jxl", post(download_jxl))
+            .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
             .fallback_service(ServeDir::new("static"));
 
         let addr = "0.0.0.0:3000";

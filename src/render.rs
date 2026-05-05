@@ -1,8 +1,24 @@
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use rand::Rng;
 
 use crate::codec;
+
+/// Default wall-clock cap for a single `jxl_from_tree` invocation.
+/// Override with `RENDER_TIMEOUT_SECS=N` for ops tuning. A normal render
+/// completes in <100 ms; the cap exists to keep a hung child from
+/// pinning a `spawn_blocking` worker forever.
+const DEFAULT_RENDER_TIMEOUT_SECS: u64 = 30;
+
+fn render_timeout() -> Duration {
+    let secs = std::env::var("RENDER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_RENDER_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
 
 /// Encode `program_text` with `./jxl_from_tree`, decode the resulting JXL
 /// bytes via `jxl-oxide`, and return the rendered RGBA8 buffer, its
@@ -32,22 +48,56 @@ pub fn encode_jxl_from_tree(program_text: &str) -> Result<Vec<u8>, String> {
 
     std::fs::write(&input_path, program_text).map_err(|e| format!("write temp input: {}", e))?;
 
-    let output = Command::new("./jxl_from_tree")
+    let mut child = Command::new("./jxl_from_tree")
         .arg(&input_path)
         .arg(&output_path)
-        .output()
-        .map_err(|e| format!("launch jxl_from_tree: {}", e))?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&input_path);
+            format!("launch jxl_from_tree: {}", e)
+        })?;
+
+    let timeout = render_timeout();
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&input_path);
+                    let _ = std::fs::remove_file(&output_path);
+                    return Err(format!(
+                        "jxl_from_tree timed out after {}s",
+                        timeout.as_secs(),
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&input_path);
+                let _ = std::fs::remove_file(&output_path);
+                return Err(format!("jxl_from_tree wait: {}", e));
+            }
+        }
+    };
 
     let _ = std::fs::remove_file(&input_path);
 
-    if !output.status.success() {
+    if !status.success() {
         let _ = std::fs::remove_file(&output_path);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut stderr = String::new();
+        if let Some(mut s) = child.stderr.take() {
+            let _ = s.read_to_string(&mut stderr);
+        }
         let stderr = stderr.trim();
         return Err(if stderr.is_empty() {
-            format!("jxl_from_tree exited with {}", output.status)
+            format!("jxl_from_tree exited with {}", status)
         } else {
-            format!("jxl_from_tree exited with {}: {}", output.status, stderr)
+            format!("jxl_from_tree exited with {}: {}", status, stderr)
         });
     }
 

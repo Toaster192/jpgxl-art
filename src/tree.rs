@@ -44,7 +44,7 @@ pub enum Op {
 
 // ── Condition ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Condition {
     pub var: Var,
     pub op: Op,
@@ -62,7 +62,7 @@ impl Condition {
 /// Leaf predictor. Rendering happens via libjxl (see `crate::render`); this
 /// type only exists so the mutation engine has something to inspect and
 /// rewrite.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Predictor {
     /// Absolute literal value.
     Set(i64),
@@ -121,7 +121,7 @@ impl Predictor {
 /// Binary decision tree matching `jxl_from_tree`'s `ParseNode` shape: every
 /// `If` has exactly one `on_true` and one `on_false`, every path ends at a
 /// `Predict` leaf.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Node {
     If {
         condition: Condition,
@@ -133,7 +133,7 @@ pub enum Node {
 
 // ── Image program ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageProgram {
     pub width: u32,
     pub height: u32,
@@ -221,6 +221,7 @@ const EXTRA_HEADER_KEYS: &[&str] = &[
     "DeltaPalette",
     "Gaborish",
     "XYB",
+    "XYBFactors",
     "Alpha",
     "NotLast",
     "EPF",
@@ -229,6 +230,9 @@ const EXTRA_HEADER_KEYS: &[&str] = &[
     "Rec2100",
     "Noise",
     "FramePos",
+    "SplineQuantizationAdjustment",
+    "CbYCr",
+    "PQ",
 ];
 
 impl ImageProgram {
@@ -241,15 +245,7 @@ impl ImageProgram {
     /// through `to_text` unchanged.
     pub fn from_text(s: &str) -> Result<Self, String> {
         let stripped = strip_block_comments(s);
-        let all_lines: Vec<&str> = stripped.lines().collect();
-        // A leading comment like `/* title */` becomes a blank line after
-        // stripping; drop those up front so the header loop doesn't treat
-        // that blank line as the end of headers.
-        let start_idx = all_lines
-            .iter()
-            .position(|l| !l.trim().is_empty())
-            .unwrap_or(all_lines.len());
-        let lines: &[&str] = &all_lines[start_idx..];
+        let lines: Vec<&str> = stripped.lines().collect();
 
         let mut bitdepth: u32 = 8;
         let mut width: u32 = 1024;
@@ -258,14 +254,39 @@ impl ImageProgram {
         let mut orientation: Option<u32> = None;
         let mut rct: Option<u32> = None;
         let mut extra_headers: Vec<String> = Vec::new();
+        let mut splines: Vec<String> = Vec::new();
 
-        // Phase 1: headers. Ends at first blank line OR first unknown first-token.
-        let mut body_start = lines.len();
-        for (i, line) in lines.iter().enumerate() {
-            let trimmed = line.trim();
+        // Header phase: walk all lines until the first body-starter (`if` or
+        // `-`). Blank lines and `Spline … EndSpline` blocks can be interleaved
+        // with header directives, so we don't stop at the first blank.
+        let mut i = 0;
+        let body_start = loop {
+            if i >= lines.len() {
+                break i;
+            }
+            let trimmed = lines[i].trim();
             if trimmed.is_empty() {
-                body_start = i + 1;
-                break;
+                i += 1;
+                continue;
+            }
+            let first_tok = trimmed.split_whitespace().next().unwrap_or("");
+            if first_tok == "if" || first_tok == "-" {
+                break i;
+            }
+            if first_tok == "Spline" {
+                let mut block: Vec<&str> = vec![lines[i]];
+                i += 1;
+                while i < lines.len() {
+                    let cur = lines[i];
+                    block.push(cur);
+                    let has_end = cur.split_whitespace().any(|t| t == "EndSpline");
+                    i += 1;
+                    if has_end {
+                        break;
+                    }
+                }
+                splines.push(block.join("\n"));
+                continue;
             }
             let mut it = trimmed.split_whitespace();
             let key = it.next().unwrap_or("");
@@ -278,7 +299,6 @@ impl ImageProgram {
                 "Orientation" => orientation = Some(parse_u32(&rest, "Orientation")?),
                 "RCT" => rct = Some(parse_u32(&rest, "RCT")?),
                 k if EXTRA_HEADER_KEYS.contains(&k) => {
-                    // Canonicalise whitespace: key + args joined by single spaces.
                     let mut line = String::from(k);
                     for a in &rest {
                         line.push(' ');
@@ -286,41 +306,14 @@ impl ImageProgram {
                     }
                     extra_headers.push(line);
                 }
-                _ => {
-                    // Unknown first token → treat as start of body.
-                    body_start = i;
-                    break;
-                }
+                other => return Err(format!("unknown directive '{}' in header", other)),
             }
-        }
+            i += 1;
+        };
 
-        // Phase 2: extract Spline…EndSpline blocks; the rest is tree body.
-        let mut splines: Vec<String> = Vec::new();
-        let mut body_lines: Vec<&str> = Vec::new();
-        let mut j = body_start;
-        while j < lines.len() {
-            let first_tok = lines[j].split_whitespace().next().unwrap_or("");
-            if first_tok == "Spline" {
-                let mut block: Vec<&str> = vec![lines[j]];
-                j += 1;
-                while j < lines.len() {
-                    let cur = lines[j];
-                    block.push(cur);
-                    let has_end = cur.split_whitespace().any(|t| t == "EndSpline");
-                    j += 1;
-                    if has_end {
-                        break;
-                    }
-                }
-                splines.push(block.join("\n"));
-            } else {
-                body_lines.push(lines[j]);
-                j += 1;
-            }
-        }
-
-        // Phase 3: tokenise body and walk the tree.
-        let tokens: Vec<&str> = body_lines
+        // Body phase: tokenise everything from `body_start` onwards and walk
+        // the tree.
+        let tokens: Vec<&str> = lines[body_start..]
             .iter()
             .flat_map(|l| l.split_whitespace())
             .collect();
@@ -436,11 +429,26 @@ fn parse_node(tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
 
 fn parse_predictor_tokens(name: &str, tokens: &[&str], pos: &mut usize) -> Result<Node, String> {
     if name == "Set" {
-        let v_str = *tokens.get(*pos).ok_or("expected value after 'Set'")?;
+        let first = *tokens.get(*pos).ok_or("expected value after 'Set'")?;
         *pos += 1;
-        let v: i64 = v_str
-            .parse()
-            .map_err(|_| format!("bad Set value: '{}'", v_str))?;
+        let v: i64 = if first == "-" || first == "+" {
+            let mag_str = *tokens
+                .get(*pos)
+                .ok_or_else(|| format!("expected magnitude after Set sign '{}'", first))?;
+            *pos += 1;
+            let mag: i64 = mag_str
+                .parse()
+                .map_err(|_| format!("bad Set magnitude: '{}'", mag_str))?;
+            if first == "-" {
+                -mag
+            } else {
+                mag
+            }
+        } else {
+            first
+                .parse()
+                .map_err(|_| format!("bad Set value: '{}'", first))?
+        };
         return Ok(Node::Predict(Predictor::Set(v)));
     }
 
