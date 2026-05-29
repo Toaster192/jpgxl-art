@@ -1,5 +1,7 @@
 # ArtXL
 
+**Live:** <https://jxl-art.toaster.work/>
+
 A web playground for [jxl-art][jxl-art-post] — a tiny tree-based image
 program format embedded in JPEG XL bitstreams. Edit a program in the
 browser, render it, and watch a grid of automated mutations re-interpret
@@ -48,14 +50,18 @@ cargo test --test gallery_encode -- --ignored   # full gallery encode loop (~3 m
 CI runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
 `cargo build --release`, and the fast tests on every PR.
 
+## Deploy
+
+`deploy/` has everything for a fresh-VPS bring-up: the systemd unit, an
+idempotent `bootstrap.sh`, and a runbook (`deploy/README.md`) covering the
+Cloudflare Tunnel setup and the GitHub Actions secrets the workflow needs.
+
 ## References
 
 - Surma's introduction to jxl-art: <https://surma.dev/things/jxl-art/>
 - The `jxl_from_tree` source (in libjxl):
   <https://github.com/libjxl/libjxl/blob/v0.11.2/tools/jxl_from_tree.cc>
 - More example programs and a community editor: <https://jpegxl.info/art/>
-- `CLAUDE.md` in this repo has the architectural deep-dive
-  (request flow, mutation taxonomy, format constraints).
 
 [jxl-art-post]: https://surma.dev/things/jxl-art/
 [libjxl]: https://github.com/libjxl/libjxl
