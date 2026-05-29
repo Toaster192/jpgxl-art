@@ -137,6 +137,9 @@ async fn generate(Query(q): Query<SizeQuery>) -> Response {
     stream_response(ImageProgram::example_jxlart(), q.size, vec![])
 }
 
+// No longer used by the bundled UI (the "Randomize 1" button was removed in
+// favour of the 20-program batch); kept on the server for permalinks and any
+// external scripts that still hit `/api/random?complexity=`.
 async fn randomize(Query(q): Query<RandomQuery>) -> Response {
     let complexity = Complexity::from_u8(q.complexity);
     let prog = tokio::task::spawn_blocking(move || random_program_non_degenerate(complexity))
@@ -645,6 +648,8 @@ fn main() {
 
         let app = Router::new()
             .route("/api/generate", get(generate))
+            // /api/random kept for backward compat (external callers); the UI
+            // only uses /api/random/batch now.
             .route("/api/random", get(randomize))
             .route("/api/random/batch", get(random_batch))
             .route("/api/gallery", get(gallery_handler))

@@ -1,11 +1,48 @@
-:root {
-  /* Comparison bar height cap. Used directly and inside calc() on the
-     pinned canvases, so the two stay in sync. */
-  --bar-max-h: 45vh;
-}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: monospace; background: #111; color: #eee; padding: 1rem; }
-h1 { font-size: 1.4rem; margin-bottom: 1rem; color: #fff; }
+/* ── Design tokens ──────────────────────────────────────────────────
+   One accent (green) for every interactive/active state; neutrals for
+   everything else; red reserved strictly for errors/destructive hovers.
+   The teal "pinned" and amber "saved" hues that used to diverge now all
+   resolve to --accent. */
+:root {
+  --bg: #111;
+  --surface: #1e1e1e;
+  --surface-2: #1a1a1a;
+  --border: #333;
+  --border-2: #444;
+  --text: #eee;
+  --text-dim: #aaa;
+  --text-mute: #888;
+  --text-faint: #666;
+  --accent: #8ec98e;
+  --accent-hi: #ade0ad;
+  --accent-border: #4a7a4a;
+  --accent-bg: #1a2a1a;
+  --accent-bg-hover: #1f321f;
+  --accent-contrast: #10210f;
+  --accent-text: #6cc06c;
+  --danger: #e06c75;
+}
+body {
+  font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #111;
+  color: #eee;
+  padding: 1rem;
+}
+h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #fff; }
+#intro {
+  font-size: 0.78rem;
+  color: #888;
+  margin: 0 0 1rem;
+  max-width: 60ch;
+  line-height: 1.6;
+}
+#intro a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent-border);
+}
+#intro a:hover { color: var(--accent-hi); border-bottom-style: solid; }
 h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
 #gallery {
   display: grid;
@@ -18,12 +55,25 @@ h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
 .card {
   background: #1e1e1e;
   border-radius: 6px;
-  overflow: hidden;
   border: 1px solid #333;
+  position: relative;
+  container-type: inline-size;
 }
-.card canvas { display: block; width: 100%; }
+.card canvas { display: block; width: 100%; border-radius: 6px 6px 0 0; }
 .card .info { padding: 0.5rem 0.75rem; }
-.card .label { font-size: 0.85rem; color: #ccc; }
+.card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.card .label { font-size: 0.85rem; color: #ccc; flex: 1; min-width: 0; }
+.card .label.has-detail {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: #555;
+  text-underline-offset: 3px;
+}
 .card .original-badge {
   font-size: 0.7rem;
   background: #444;
@@ -36,20 +86,63 @@ h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
   flex-direction: column;
   gap: 0.5rem;
 }
-textarea#program {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  padding: 1rem;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 0.8rem;
-  color: #9cdcfe;
+/* ── Syntax-highlighted editor ─────────────────────────────────────
+   A transparent textarea sits on top of a <pre> that shows the same
+   text, syntax-highlighted. Both share identical box metrics so the
+   caret and highlight line up exactly. */
+.editor {
+  position: relative;
   width: 100%;
   min-height: 260px;
+  display: block;
+}
+#program-hl,
+textarea#program {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  letter-spacing: 0;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  width: 100%;
+  min-height: 260px;
+}
+#program-hl {
+  position: absolute;
+  inset: 0;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  overflow: auto;
+  pointer-events: none;
+  z-index: 0;
+}
+#program-hl code { font: inherit; }
+textarea#program {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: #eee;
   resize: vertical;
   outline: none;
 }
-textarea#program:focus { border-color: #555; }
+textarea#program::selection { background: rgba(120, 160, 200, 0.35); }
+.editor:focus-within #program-hl { border-color: #555; }
+/* Token colors — tuned for jxl-art's line-oriented syntax (header
+   KEY value / body `if VAR > NUM` / `- PRED [+ NUM]`). */
+.tk-paren   { color: #7a7a7a; }   /* `>` comparison op */
+.tk-kw      { color: #5a9ed6; }   /* header keys, `if`, `-` */
+.tk-fn      { color: var(--accent-text, #6cc06c); }   /* predictors + cond vars */
+.tk-num     { color: #b5cea8; }
+.tk-var     { color: #d6b85a; }   /* x/y/c */
+.tk-string  { color: #cd9178; }   /* unused for jxl-art; kept for future */
+.tk-comment { color: #6a8a5a; font-style: italic; }   /* unused for jxl-art */
 .render-btn {
   align-self: flex-start;
   padding: 0.4rem 1rem;
@@ -58,23 +151,121 @@ textarea#program:focus { border-color: #555; }
   border-radius: 4px;
   color: #eee;
   cursor: pointer;
-  font-family: monospace;
   font-size: 0.85rem;
 }
 .render-btn:hover { background: #333; }
 .render-btn:disabled { opacity: 0.5; cursor: default; }
-#random-btn, #random20-btn, #gallery-btn, #saved-btn {
+#random-btn, #gallery-btn, #saved-btn {
   padding: 0.4rem 1rem;
-  background: #1a2a1a;
-  border: 1px solid #4a7a4a;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
   border-radius: 4px;
-  color: #8ec98e;
+  color: var(--accent);
   cursor: pointer;
-  font-family: monospace;
   font-size: 0.85rem;
 }
-#random-btn:hover, #random20-btn:hover, #gallery-btn:hover, #saved-btn:hover { background: #1f321f; }
-#random-btn:disabled, #random20-btn:disabled, #gallery-btn:disabled, #saved-btn:disabled { opacity: 0.5; cursor: default; }
+#random-btn:hover, #gallery-btn:hover, #saved-btn:hover { background: var(--accent-bg-hover); }
+#random-btn:disabled, #gallery-btn:disabled, #saved-btn:disabled { opacity: 0.5; cursor: default; }
+#help-btn {
+  width: 2rem;
+  padding: 0.4rem 0;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#help-btn:hover { background: #2a2a2a; color: var(--text); }
+/* ── Footer ─────────────────────────────────────────────────────────── */
+#app-footer {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+#app-footer a {
+  color: var(--text-mute);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-2);
+}
+#app-footer a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
+/* ── Keyboard shortcuts overlay ──────────────────────────────────────── */
+#shortcuts-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 400;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+#shortcuts-modal.open { display: flex; }
+#shortcuts-card {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  width: min(440px, 100%);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+#shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--border);
+}
+#shortcuts-head h3 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+#shortcuts-close {
+  background: none; border: none; color: var(--text-mute);
+  cursor: pointer; font-size: 0.9rem; padding: 2px 6px; border-radius: 4px;
+}
+#shortcuts-close:hover { color: var(--text); background: #2a2a2a; }
+#shortcuts-list { padding: 0.5rem 1.1rem; }
+#shortcuts-list > div {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #232323;
+}
+#shortcuts-list > div:last-child { border-bottom: none; }
+#shortcuts-list dt {
+  flex: 0 0 9.5rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+#shortcuts-list dd { color: var(--text-dim); font-size: 0.85rem; }
+#shortcuts-list .alt { color: var(--text-faint); font-size: 0.7rem; display: inline-flex; gap: 3px; align-items: center; }
+kbd {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  background: #2a2a2a;
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text);
+  min-width: 1.1rem;
+  text-align: center;
+  display: inline-block;
+}
+#shortcuts-foot {
+  padding: 0.6rem 1.1rem 0.9rem;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+}
 #top-right-btns {
   position: absolute;
   top: 1rem;
@@ -106,13 +297,11 @@ textarea#program:focus { border-color: #555; }
   border-bottom-right-radius: 4px;
   color: #666;
   cursor: pointer;
-  font-family: monospace;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
 }
 .preview-btn:hover { background: #1a1a1a; color: #aaa; }
 .preview-btn:disabled { opacity: 0.4; cursor: default; }
-#error-msg { color: #e06c75; font-size: 0.8rem; }
-#status { color: #888; margin: 0.5rem 0 1rem; font-size: 0.85rem; }
+#error-msg { color: var(--danger); font-size: 0.8rem; }
 .dl-btn {
   padding: 2px 8px;
   background: #1a1a1a;
@@ -120,17 +309,16 @@ textarea#program:focus { border-color: #555; }
   border-radius: 3px;
   color: #aaa;
   cursor: pointer;
-  font-family: monospace;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 .dl-btn:hover { background: #2a2a2a; color: #eee; }
 .dl-btn:disabled { opacity: 0.4; cursor: default; }
 .dl-btn.saved {
-  color: #e6c34a;
-  border-color: #5a4a1a;
-  background: #1f1a0a;
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
 }
-.dl-btn.saved:hover { background: #2a2410; color: #ffd75a; }
+.dl-btn.saved:hover { background: var(--accent-bg-hover); color: var(--accent-hi); }
 .gallery-empty {
   grid-column: 1 / -1;
   text-align: center;
@@ -143,29 +331,192 @@ textarea#program:focus { border-color: #555; }
   font-size: 0.75rem;
   margin-top: 4px;
 }
-.card.saved-loading .saved-note.failed { color: #e06c75; }
-/* ── Card internals (built by renderCard in app.js) ─────────────────── */
-.card .dl-row {
+.card.saved-loading .saved-note.failed { color: var(--danger); }
+/* ── Card action row + overflow menu ───────────────────────── */
+.card .action-row {
   display: flex;
   gap: 6px;
   margin-top: 6px;
   flex-wrap: wrap;
   align-items: center;
 }
+.dl-btn.labeled {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+}
+.dl-btn.labeled .icon {
+  font-size: 0.95em;
+  line-height: 1;
+}
+/* The Compare button always shows its text (its Pinned state is worth
+   the words). Baseline + Save are icon-only on narrow cards and reveal
+   their label once the card has room — e.g. single-column mobile, or
+   any wide stretch of the grid. Container query keys off card width,
+   not viewport, so it's correct regardless of layout. */
+.dl-btn.labeled.collapsible .text { display: none; }
+@container (min-width: 300px) {
+  .dl-btn.labeled.collapsible .text { display: inline; }
+}
+.dl-btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.dl-btn.active:hover { background: var(--accent-bg-hover); color: var(--accent-hi); }
+.overflow-wrap { position: relative; display: inline-block; margin-left: auto; }
+.overflow-btn {
+  font-size: 1rem;
+  line-height: 0.7;
+  padding: 2px 8px 6px;
+}
+.card-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  min-width: 210px;
+  z-index: 50;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  flex-direction: column;
+  gap: 1px;
+}
+.card-menu.open { display: flex; }
+.card-menu-item {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.card-menu-item:hover { background: #2a2a2a; color: #eee; }
+/* ── Card internals (built by renderCard in app.js) ──────────────── */
 .card .jxl-size {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: #666;
-  align-self: center;
+  align-self: baseline;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 .card .program-pre {
   display: none;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   color: #9cdcfe;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
   overflow-x: auto;
   white-space: pre;
   margin-top: 4px;
 }
 .card .program-pre.show { display: block; }
+/* ── Skeleton (streaming placeholder) ─────────────────────────────── */
+/* While a render is in flight we drop a placeholder card so the grid's
+   footprint is stable — the new card replaces the skeleton in place
+   instead of pushing real cards around as each one arrives. */
+.card.skeleton {
+  background: #1a1a1a;
+  border-color: #2a2a2a;
+}
+.card.skeleton .skeleton-canvas {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #242424;
+  border-radius: 6px 6px 0 0;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.card.skeleton .skeleton-line {
+  display: inline-block;
+  width: 55%;
+  height: 18px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+/* Gallery cards have no label — their head holds only the small byte-size
+   chip. Match that so gallery skeletons aren't a few px taller than the
+   real cards they replace. */
+.card.skeleton .skeleton-line.compact {
+  width: 48px;
+  height: 14px;
+}
+/* Mock action row inside the skeleton so its overall height matches a
+   fully-rendered card — keeps the grid from settling downward when
+   the placeholder is swapped out. Widths approximate the real buttons:
+   Compare (labeled) · ↑ icon · ☆ icon · ⋯ overflow. */
+.card.skeleton .skeleton-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.card.skeleton .skeleton-btn {
+  height: 23px;
+  background: #232323;
+  border-radius: 3px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+.card.skeleton .skeleton-btn-compare  { width: 78px; }
+.card.skeleton .skeleton-btn-icon     { width: 24px; }
+.card.skeleton .skeleton-btn-overflow { width: 28px; margin-left: auto; }
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+/* ── Size segmented control ──────────────────────────────────────── */
+.size-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.size-label {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.size-segments {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.size-seg {
+  background: #1a1a1a;
+  border: none;
+  border-left: 1px solid #333;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.size-seg:first-child { border-left: none; }
+.size-seg:hover { background: #222; color: #ccc; }
+.size-seg.active {
+  background: #2a2a2a;
+  color: #eee;
+}
+.size-seg .native {
+  font-size: 0.62rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.size-seg.active .native { color: var(--accent); }
 /* ── Comparison bar ──────────────────────────────────────────────────── */
 #compare-bar {
   display: none;
@@ -175,28 +526,81 @@ textarea#program:focus { border-color: #555; }
   border-top: 1px solid #3a3a3a;
   z-index: 200;
 }
+/* Collapsed: a small floating pill bottom-left instead of a 45vh drawer.
+   The image strip is hidden; the header itself becomes the badge. */
+#compare-bar.collapsed {
+  left: 16px; right: auto; bottom: 16px;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+#compare-bar.collapsed #compare-images { display: none; }
+#compare-bar.collapsed #compare-header { border-bottom: none; padding: 5px 8px 5px 12px; }
+#compare-bar.collapsed #compare-clear { display: none; }
+#compare-bar.collapsed .cmp-chevron { transform: rotate(0deg); }
 #compare-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   padding: 4px 10px;
   font-size: 0.75rem;
   color: #888;
   border-bottom: 1px solid #2a2a2a;
 }
-#compare-header span { letter-spacing: 0.05em; }
+#compare-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  padding: 2px 4px;
+}
+#compare-toggle .cmp-icon { font-size: 0.95rem; color: var(--accent); }
+#compare-count {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.72rem;
+  font-weight: 600;
+  min-width: 1.2rem;
+  text-align: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.cmp-chevron {
+  color: #666;
+  font-size: 0.65rem;
+  transition: transform 0.15s ease;
+  transform: rotate(180deg);
+}
 #compare-clear {
   background: none; border: none; color: #666;
-  cursor: pointer; font-size: 0.75rem; font-family: monospace;
+  cursor: pointer; font-size: 0.78rem;
   padding: 2px 6px;
 }
 #compare-clear:hover { color: #e06c75; }
+/* On phones the side-by-side comparison strip can't show images big
+   enough to be useful — comparison fundamentally needs horizontal room.
+   Below this width we hide the compare bar and the per-card Compare
+   button entirely. (!important so it beats the inline display the JS
+   sets when something is pinned, e.g. after resizing down from desktop.) */
+@media (max-width: 640px) {
+  #compare-bar { display: none !important; }
+  .dl-btn.cmp-action { display: none !important; }
+}
 #compare-images {
   display: flex;
   gap: 10px;
   padding: 10px;
   overflow-x: auto;
-  max-height: var(--bar-max-h);
+  max-height: 45vh;
 }
 .cmp-item {
   flex-shrink: 0;
@@ -207,22 +611,22 @@ textarea#program:focus { border-color: #555; }
 }
 .cmp-item canvas {
   display: block;
-  max-height: calc(var(--bar-max-h) - 40px);
+  max-height: calc(45vh - 40px);
   width: auto;
   cursor: pointer;
   border: 1px solid #333;
   border-radius: 3px;
 }
-.cmp-item canvas:hover { border-color: #e06c75; }
+.cmp-item canvas:hover { border-color: var(--danger); }
 .cmp-label {
   font-size: 0.7rem; color: #aaa;
   display: flex; justify-content: space-between; align-items: center;
 }
 .cmp-remove {
   background: none; border: none; color: #555;
-  cursor: pointer; font-size: 0.75rem; font-family: monospace; padding: 0 2px;
+  cursor: pointer; font-size: 0.78rem; padding: 0 2px;
 }
-.cmp-remove:hover { color: #e06c75; }
+.cmp-remove:hover { color: var(--danger); }
 /* section headers inside the gallery grid */
 .gallery-section-header {
   grid-column: 1 / -1;
@@ -240,11 +644,11 @@ textarea#program:focus { border-color: #555; }
   color: #888;
   padding: 0.25rem 0 0.5rem;
 }
-.gallery-credit a { color: #8ec98e; text-decoration: none; }
+.gallery-credit a { color: var(--accent); text-decoration: none; }
 .gallery-credit a:hover { text-decoration: underline; }
 /* cursor on gallery canvases */
 .card canvas { cursor: zoom-in; }
-.card canvas.pinned { outline: 2px solid #4ec9b0; outline-offset: -2px; }
+.card canvas.pinned { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* zoom modal */
 #zoom-modal {
   display: none;
@@ -306,9 +710,16 @@ textarea#program:focus { border-color: #555; }
     gap: 0.5rem;
   }
   #editor-wrap { flex: 1 1 auto; min-height: 0; }
+  .editor {
+    flex: 1 1 auto;
+    min-height: 200px;
+    display: flex;
+  }
+  #program-hl,
   textarea#program {
     flex: 1 1 auto;
     min-height: 200px;
-    resize: none;
+    height: 100%;
   }
+  textarea#program { resize: none; }
 }
