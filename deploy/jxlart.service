@@ -1,0 +1,37 @@
+[Unit]
+Description=ArtXL — tree-based jxl-art renderer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jxlart
+Group=jxlart
+WorkingDirectory=/opt/jxlart
+ExecStart=/opt/jxlart/target/release/artxl
+Restart=on-failure
+RestartSec=5
+
+# Startup includes a ~4-minute synchronous gallery pre-render before the
+# listener binds. Don't let systemd kill it as a startup-timeout failure.
+TimeoutStartSec=600
+
+Environment=RUST_LOG=info
+
+# Hardening — the app needs to exec ./jxl_from_tree and write the temp file
+# the subprocess round-trips through, so we keep /tmp writable (PrivateTmp)
+# but close everything else we can.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

@@ -18,11 +18,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
-            cd /root/jpgxl-art
+            cd /opt/jxlart
             git pull origin main
             # Build first; if this fails, the running service stays on the
             # last good binary instead of being restarted into nothing.
-            /root/.cargo/bin/cargo build --release
+            ~/.cargo/bin/cargo build --release
             sudo systemctl restart jxlart
             # Startup pre-renders the gallery before the listener binds
             # (~4 min on the deploy box), so poll for up to 6 minutes
