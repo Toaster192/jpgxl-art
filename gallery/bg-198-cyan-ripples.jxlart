@@ -1,0 +1,12 @@
+Bitdepth 4
+Width 52
+Height 52
+RCT 3
+Upsample 8
+Orientation 4
+
+if W+N-NW > -32
+  if W+N-NW > 63
+    - Set -16
+    - Gradient -5
+  - Set 29

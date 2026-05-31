@@ -1,0 +1,21 @@
+RCT 18
+Orientation 6
+Alpha
+
+if c > 0
+  if PrevAbsErr > 3
+    - Set 255
+    if W > 20
+      - AvgW+N - 11
+      - Set 0
+  if N-NN > -1
+    if W > 396
+      - Set 28
+      if W > 2
+        if W-WW > -1
+          - AvgN+NE + 1
+          - W - 3
+        - Set 3
+    if N > 6
+      - AvgN+NW - 1
+      - Set 3

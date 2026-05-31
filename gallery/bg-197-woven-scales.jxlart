@@ -1,0 +1,12 @@
+Bitdepth 5
+RCT 17
+Width 424
+Height 424
+Upsample 2
+Orientation 4
+
+if W+N-NW > 31
+  - Set -24
+  if W+N-NW > -36
+    - AvgW+N 2
+    - Set 14
