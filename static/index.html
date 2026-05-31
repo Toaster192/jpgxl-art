@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ArtXL</title>
+  <title>ArtXL — JPEG XL art</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
   <div id="top-right-btns">
@@ -19,12 +19,22 @@
   </div>
   <div id="layout">
     <div id="left-pane">
-      <h1>ArtXL — tree-based image mutation</h1>
+      <h1>ArtXL — mutate &amp; generate JPEG XL art</h1>
       <p id="intro">
-        Tree-shaped programs render to images and compress to a few hundred bytes of JPEG XL.
+        JPEG XL allows for beautiful, sub-100-byte images, but writing one by hand is fiddly.
+        This playground makes it easier by generating new art from scratch and applying
+        <a href="https://en.wikipedia.org/wiki/Mutation_testing" target="_blank" rel="noopener noreferrer">mutations</a>
+        to existing programs, exploiting JPEG XL's tree-shaped (code-like) representation.
         <a href="https://jpegxl.info/art/" target="_blank" rel="noopener noreferrer">What is JPEG XL art?</a>
         ·
         <a href="https://jxl-art.lucaversari.it/wtf.html" target="_blank" rel="noopener noreferrer">Syntax reference</a>
+      </p>
+      <p id="other-editors">
+        Want to write the code by hand instead? These editors are great for that:
+        <a href="https://jxl-art.lucaversari.it/" target="_blank" rel="noopener noreferrer">Luca Versari</a>,
+        <a href="https://qon.github.io/jxl-art/" target="_blank" rel="noopener noreferrer">qon</a>,
+        <a href="https://www.januschka.com/jxl-art/" target="_blank" rel="noopener noreferrer">Januschka</a>,
+        <a href="https://jxl-art.surma.technology/" target="_blank" rel="noopener noreferrer">Surma</a>.
       </p>
       <h2>Program</h2>
       <div id="editor-wrap">
@@ -56,8 +66,12 @@
       </div>
 
       <footer id="app-footer">
-        <span>ArtXL · gallery programs by the JPEG&nbsp;XL art community</span>
-        <a href="https://github.com/Toaster192/jpgxl-art" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
+        Created by
+        <a href="https://github.com/Toaster192" target="_blank" rel="noopener noreferrer">Toaster</a>
+        using
+        <a href="https://github.com/libjxl/libjxl" target="_blank" rel="noopener noreferrer">libjxl</a>
+        <span class="sep" aria-hidden="true">·</span>
+        <a href="https://github.com/Toaster192/jpgxl-art" target="_blank" rel="noopener noreferrer">Source ↗</a>
       </footer>
     </div>
 
@@ -107,6 +121,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

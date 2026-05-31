@@ -43,6 +43,19 @@ h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #fff; }
   border-bottom: 1px dotted var(--accent-border);
 }
 #intro a:hover { color: var(--accent-hi); border-bottom-style: solid; }
+#other-editors {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin: 0 0 1rem;
+  max-width: 60ch;
+  line-height: 1.6;
+}
+#other-editors a {
+  color: var(--text-mute);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-2);
+}
+#other-editors a:hover { color: var(--accent); border-bottom-color: var(--accent-border); }
 h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
 #gallery {
   display: grid;
@@ -184,12 +197,14 @@ textarea#program::selection { background: rgba(120, 160, 200, 0.35); }
   border-top: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  justify-content: space-between;
+  gap: 0.4rem 0.7rem;
+  justify-content: center;
   align-items: baseline;
   font-size: 0.72rem;
   color: var(--text-faint);
+  text-align: center;
 }
+#app-footer .sep { color: var(--border-2); user-select: none; }
 #app-footer a {
   color: var(--text-mute);
   text-decoration: none;

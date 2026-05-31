@@ -1069,6 +1069,26 @@ pub fn entries() -> Vec<GalleryEntry> {
             size: 0,
         },
         GalleryEntry {
+            name: "Neon rain",
+            program_text: include_str!("../gallery/bg-195-neon-rain.jxlart"),
+            size: 0,
+        },
+        GalleryEntry {
+            name: "Magenta slashes",
+            program_text: include_str!("../gallery/bg-196-magenta-slashes.jxlart"),
+            size: 0,
+        },
+        GalleryEntry {
+            name: "Woven scales",
+            program_text: include_str!("../gallery/bg-197-woven-scales.jxlart"),
+            size: 0,
+        },
+        GalleryEntry {
+            name: "Cyan ripples",
+            program_text: include_str!("../gallery/bg-198-cyan-ripples.jxlart"),
+            size: 0,
+        },
+        GalleryEntry {
             name: "Chroma and luma (Rec2100 PQ)",
             program_text: include_str!("../gallery/hdr-001-chroma-and-luma-rec2100-pq.jxlart"),
             size: 0,

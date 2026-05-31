@@ -697,6 +697,9 @@ function resetModeToggles() {
 
 let inflight = null; // { controller, btn, originalText, prevMinWidth }
 let activeBusyBtn = null;
+// Cards detached when opening Gallery/Saved from normal mode. Re-attached
+// when the panel closes so a half-finished randomize/render isn't lost.
+let stashedCards = null;
 
 // Progress counts ride on the pressed button (see runAction's width-freeze).
 // When there's no pressed button — initial page load via main() — there's
@@ -733,8 +736,23 @@ function runAction(btn, label, fn) {
   }
   activeBusyBtn = btn || null;
   errorMsg.textContent = '';
-  gallery.innerHTML = '';
-  clearAllPins();
+  // Opening Gallery/Saved from a populated normal view detaches (but keeps
+  // alive) the current cards so closing the panel restores them — no need to
+  // re-run /api/generate. Pins reference the same canvases, so they survive
+  // the round-trip too.
+  const enteringPanel =
+    (btn === galleryBtn || btn === savedBtn) && currentMode === 'normal';
+  if (enteringPanel && stashedCards === null && gallery.children.length > 0) {
+    // Drop unfilled skeletons — restoring them would just show ghost cards.
+    stashedCards = Array.from(gallery.children)
+      .filter(el => !el.classList.contains('skeleton'));
+    gallery.replaceChildren();
+    if (stashedCards.length === 0) stashedCards = null;
+  } else {
+    gallery.innerHTML = '';
+    clearAllPins();
+    stashedCards = null;
+  }
   if (btn !== galleryBtn && btn !== savedBtn) resetModeToggles();
 
   const controller = new AbortController();
@@ -915,10 +933,23 @@ function addGalleryCredit(container) {
   container.appendChild(el);
 }
 
+function restoreStashed() {
+  if (inflight) {
+    const prev = inflight;
+    inflight = null;
+    prev.controller.abort();
+    restoreBtn(prev);
+    activeBusyBtn = null;
+  }
+  resetModeToggles();
+  gallery.replaceChildren(...stashedCards);
+  stashedCards = null;
+}
+
 galleryBtn.addEventListener('click', () => {
   if (currentMode === 'gallery') {
-    resetModeToggles();
-    main();
+    if (stashedCards) restoreStashed();
+    else { resetModeToggles(); main(); }
   } else {
     openGallery();
   }
@@ -926,8 +957,8 @@ galleryBtn.addEventListener('click', () => {
 
 savedBtn.addEventListener('click', () => {
   if (currentMode === 'saved') {
-    resetModeToggles();
-    main();
+    if (stashedCards) restoreStashed();
+    else { resetModeToggles(); main(); }
   } else {
     openSaved();
   }
