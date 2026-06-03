@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <div id="top-right-btns">
@@ -42,12 +42,22 @@
           <pre id="program-hl" aria-hidden="true"><code></code></pre>
           <textarea id="program" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
         </div>
-        <div class="size-picker">
-          <span class="size-label">Size</span>
-          <div class="size-segments" id="size-segments" role="radiogroup" aria-label="Render size">
-            <button type="button" class="size-seg" data-size="320" role="radio" aria-checked="false">320</button>
-            <button type="button" class="size-seg active" data-size="0" role="radio" aria-checked="true">1024 <span class="native">native</span></button>
-            <button type="button" class="size-seg" data-size="2048" role="radio" aria-checked="false">2048</button>
+        <div class="picker-row">
+          <div class="size-picker">
+            <span class="size-label">Size</span>
+            <div class="size-segments" id="size-segments" role="radiogroup" aria-label="Render size">
+              <button type="button" class="size-seg" data-size="320" role="radio" aria-checked="false">320</button>
+              <button type="button" class="size-seg active" data-size="0" role="radio" aria-checked="true">1024 <span class="native">native</span></button>
+              <button type="button" class="size-seg" data-size="2048" role="radio" aria-checked="false">2048</button>
+            </div>
+          </div>
+          <div class="size-picker">
+            <span class="size-label" title="Shape of randomly generated canvases (combines with Size). Applies to Randomize.">Aspect</span>
+            <div class="size-segments" id="aspect-segments" role="radiogroup" aria-label="Random canvas aspect ratio">
+              <button type="button" class="size-seg" data-aspect="wide" role="radio" aria-checked="false">Wide</button>
+              <button type="button" class="size-seg active" data-aspect="square" role="radio" aria-checked="true">1:1 <span class="native">native</span></button>
+              <button type="button" class="size-seg" data-aspect="tall" role="radio" aria-checked="false">Tall</button>
+            </div>
           </div>
         </div>
         <div class="btn-row">
@@ -121,6 +131,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

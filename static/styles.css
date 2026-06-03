@@ -489,6 +489,16 @@ kbd {
   50%      { opacity: 1; }
 }
 /* ── Size segmented control ──────────────────────────────────────── */
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+.picker-row .size-picker {
+  margin-bottom: 0;
+}
 .size-picker {
   display: flex;
   align-items: center;

@@ -129,6 +129,22 @@ struct RandomQuery {
     /// to normal — keeps the endpoint forgiving on stale clients.
     #[serde(default)]
     complexity: u8,
+    /// Generated canvas dimensions (from the UI's size×aspect selector). Both
+    /// must be present to take effect; absent → default 1024² + pixel-mode.
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
+}
+
+impl RandomQuery {
+    /// Explicit canvas dims, clamped to a sane range, or `None`.
+    fn dims(&self) -> Option<(u32, u32)> {
+        match (self.width, self.height) {
+            (Some(w), Some(h)) => Some((w.clamp(8, 4096), h.clamp(8, 4096))),
+            _ => None,
+        }
+    }
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -142,7 +158,8 @@ async fn generate(Query(q): Query<SizeQuery>) -> Response {
 // external scripts that still hit `/api/random?complexity=`.
 async fn randomize(Query(q): Query<RandomQuery>) -> Response {
     let complexity = Complexity::from_u8(q.complexity);
-    let prog = tokio::task::spawn_blocking(move || random_program_non_degenerate(complexity))
+    let dims = q.dims();
+    let prog = tokio::task::spawn_blocking(move || random_program_non_degenerate(complexity, dims))
         .await
         .expect("random_program_non_degenerate panicked");
     stream_response(prog, 0, Mutation::showcase())
@@ -151,13 +168,14 @@ async fn randomize(Query(q): Query<RandomQuery>) -> Response {
 async fn random_batch(Query(q): Query<RandomQuery>) -> Response {
     const COUNT: usize = 20;
     let complexity = Complexity::from_u8(q.complexity);
+    let dims = q.dims();
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
         let mut unordered = stream::iter(0..COUNT)
             .map(|i| async move {
                 tokio::task::spawn_blocking(move || {
-                    let prog = random_program_non_degenerate(complexity);
+                    let prog = random_program_non_degenerate(complexity, dims);
                     let program_text = prog.to_text();
                     let image = render_to_payload(&program_text, 0, encode_preview_webp);
                     (i, program_text, image)

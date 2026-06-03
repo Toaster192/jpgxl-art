@@ -5,6 +5,7 @@ const renderSingleBtn   = document.getElementById('render-single-btn');
 const renderBtn         = document.getElementById('render-btn');
 const renderCompoundBtn = document.getElementById('render-compound-btn');
 const sizeSegments      = document.getElementById('size-segments');
+const aspectSegments    = document.getElementById('aspect-segments');
 const randomBtn         = document.getElementById('random-btn');
 const randomSimpleBtn   = document.getElementById('random-simple-btn');
 const randomComplexBtn  = document.getElementById('random-complex-btn');
@@ -788,6 +789,34 @@ sizeSegments.querySelectorAll('.size-seg').forEach(seg => {
   });
 });
 
+// Aspect ratio for *generated* canvases (Randomize only). Combines with the
+// size segment: size = the canvas's longest edge, aspect = the W:H shape.
+let genAspect = 'square';
+aspectSegments.querySelectorAll('.size-seg').forEach(seg => {
+  seg.addEventListener('click', () => {
+    genAspect = seg.dataset.aspect || 'square';
+    aspectSegments.querySelectorAll('.size-seg').forEach(s => {
+      const active = s === seg;
+      s.classList.toggle('active', active);
+      s.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  });
+});
+
+// Build the random-batch URL. The default (1:1 + native/1024) sends no dims,
+// preserving the server's default 1024² + occasional pixel-mode. Any explicit
+// shape/size sends width/height at a 16:9 ratio so the canvas is fixed.
+function randomUrl(complexity) {
+  let url = `/api/random/batch?complexity=${complexity}`;
+  const base = renderSize || 1024;
+  if (genAspect === 'square' && base === 1024) return url;
+  const short = Math.round(base * 9 / 16);
+  let w = base, h = base;
+  if (genAspect === 'wide') h = short;
+  else if (genAspect === 'tall') w = short;
+  return url + `&width=${w}&height=${h}`;
+}
+
 function bindSizes(btn, busy, url, method, body) {
   btn.addEventListener('click', () =>
     runAction(btn, busy, signal => streamFrom(url, method, body(), renderSize, signal)));
@@ -799,7 +828,7 @@ function bindSizes(btn, busy, url, method, body) {
 // (seeded "0 / 20" so it doesn't resize) — the narrow side buttons stay put.
 function bindRandom(triggerBtn, complexity) {
   triggerBtn.addEventListener('click', () => runAction(randomBtn, '0 / 20',
-    signal => streamFrom(`/api/random/batch?complexity=${complexity}`, 'GET', null, 0, signal)));
+    signal => streamFrom(randomUrl(complexity), 'GET', null, 0, signal)));
 }
 bindRandom(randomBtn,        1);
 bindRandom(randomSimpleBtn,  0);

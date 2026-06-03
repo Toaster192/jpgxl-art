@@ -62,48 +62,111 @@ fn random_headers(rng: &mut impl Rng) -> Vec<String> {
         .collect()
 }
 
-pub fn random_program(complexity: Complexity) -> ImageProgram {
+/// Remove every `extra_headers` line whose first token is `key`.
+fn remove_header(headers: &mut Vec<String>, key: &str) {
+    headers.retain(|h| h.split_whitespace().next() != Some(key));
+}
+
+/// Curated bitdepths for the random generator. 8 is weighted (appears twice);
+/// low values posterize, high values give smoother / true-HDR `.jxl` output.
+/// Value ranges scale to the bitdepth (via `GenCtx`) so high bitdepth doesn't
+/// just produce dark images.
+const GEN_BITDEPTHS: &[u32] = &[4, 5, 6, 8, 8, 10, 12];
+
+/// Generate a random program. `dims` overrides the canvas (from the UI's
+/// size×aspect selector); `None` keeps the default 1024² with an occasional
+/// small-canvas "pixel mode".
+pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> ImageProgram {
     let mut rng = rand::thread_rng();
     let probs = complexity.branch_probs();
+
+    let mut bitdepth = GEN_BITDEPTHS[rng.gen_range(0..GEN_BITDEPTHS.len())];
+    let mut extra_headers = random_headers(&mut rng);
+
+    // Pixel mode (small canvas + Upsample) only applies when no explicit canvas
+    // was requested. Decided up front because it's mutually exclusive with
+    // alpha: Alpha + Upsample(≥2) crashes jxl_from_tree.
+    let pixel_mode = dims.is_none() && rng.gen_bool(0.15);
+
+    // ~18% alpha mode (never alongside pixel mode): add an Alpha plane so the
+    // tree can condition on c=3. Carried purely by the header — we never emit
+    // `Channels` (jxl_from_tree v0.11.2 rejects that directive).
+    let alpha = !pixel_mode && rng.gen_bool(0.18);
+    if alpha {
+        extra_headers.push("Alpha".to_string());
+    }
+    let channels = if alpha { 4 } else { 3 };
+
+    // Orientation 5/6/7/8 transpose width↔height on decode (jxl-oxide applies
+    // EXIF orientation), so a requested "wide" canvas would otherwise display
+    // tall half the time. Pick it up front so explicit dims can compensate.
+    let orientation = rng.gen_range(1u32..=8);
+    let transposes = matches!(orientation, 5 | 6 | 7 | 8);
+
+    // Dimensions. An explicit canvas (size×aspect) is the requested *display*
+    // shape — pre-swap it when the orientation transposes so the rendered card
+    // matches. No pixel-mode/Upsample there (would override/balloon the chosen
+    // size). Otherwise default 1024² with ~15% small-canvas pixel mode (square,
+    // so transposition is a visual no-op). The Upsample factor is bounded so
+    // native size (dim*factor) ≤ 1024 — `decode_jxl` decodes at native res.
+    let (width, height) = match dims {
+        Some((w, h)) => {
+            let (w, h) = (w.max(1), h.max(1));
+            if transposes {
+                (h, w)
+            } else {
+                (w, h)
+            }
+        }
+        None => {
+            if pixel_mode {
+                let dim = [64u32, 96, 128, 256][rng.gen_range(0..4)];
+                let factor = (1024 / dim).min(8); // 64→8, 96→8, 128→8, 256→4
+                extra_headers.push(format!("Upsample {}", factor));
+                bitdepth = rng.gen_range(4u32..=6); // blocky look wants low bitdepth
+                (dim, dim)
+            } else {
+                (1024, 1024)
+            }
+        }
+    };
+
+    let ctx = GenCtx {
+        value_max: value_max_for(bitdepth),
+        width,
+        height,
+        channels,
+    };
+
     // Force a channel split at the root so RCT-6 (YCoCg inverse) actually
     // produces varied colour. Without this, trees that never condition on
     // `c` emit identical Y/Co/Cg values for all channels, and the inverse
     // transform of (V,V,V) is always yellow-green — the single biggest
     // source of colour bias in random output. Harmless under other RCTs.
-    let c_threshold: i64 = if rng.gen_bool(0.5) { 0 } else { 1 };
+    // With alpha, allow c>2 so the alpha plane gets its own subtree.
+    let c_threshold: i64 = if alpha {
+        rng.gen_range(0i64..=2)
+    } else if rng.gen_bool(0.5) {
+        0
+    } else {
+        1
+    };
     let root = Node::If {
         condition: Condition {
             var: Var::C,
             op: Op::Gt,
             threshold: c_threshold,
         },
-        on_true: Box::new(random_node(&mut rng, 1, probs)),
-        on_false: Box::new(random_node(&mut rng, 1, probs)),
-    };
-    let mut extra_headers = random_headers(&mut rng);
-
-    // ~15% "pixel mode": a small canvas upscaled by Upsample with a low
-    // bitdepth — the blocky pixel-art aesthetic that's all over the gallery.
-    // This is the only place factor 8 is used (CycleUpsample caps at 4, since
-    // 8× a 1024² program would decode to 8192²). The factor is derived so the
-    // upscaled native size (dim*factor) never exceeds 1024 — `decode_jxl`
-    // decodes at native resolution before downscaling, so an unbounded factor
-    // would make a generated program far slower to render than a default 1024².
-    let (width, height, bitdepth) = if rng.gen_bool(0.15) {
-        let dim = [64u32, 96, 128, 256][rng.gen_range(0..4)];
-        let factor = (1024 / dim).min(8); // 64→8, 96→8, 128→8, 256→4
-        extra_headers.push(format!("Upsample {}", factor));
-        (dim, dim, rng.gen_range(4u32..=6))
-    } else {
-        (1024, 1024, 8)
+        on_true: Box::new(random_node(&mut rng, 1, probs, &ctx)),
+        on_false: Box::new(random_node(&mut rng, 1, probs, &ctx)),
     };
 
     ImageProgram {
         width,
         height,
         bitdepth,
-        channels: 3,
-        orientation: Some(rng.gen_range(1u32..=8)),
+        channels: 3, // never emit `Channels`; alpha is a header
+        orientation: Some(orientation),
         rct: Some(random_rct(&mut rng)),
         extra_headers,
         splines: Vec::new(),
@@ -112,16 +175,19 @@ pub fn random_program(complexity: Complexity) -> ImageProgram {
 }
 
 /// Generate a random program whose preview is not degenerate
-/// (single-colour / flat). Uses the roundtrip renderer at 64 px so the
-/// check is accurate to what libjxl will actually produce. On retry we
-/// first just re-roll the cheap program-level knobs (RCT + headers) that
-/// often pull a flat result back into colour; only after several failures
-/// do we regenerate the tree from scratch.
-pub fn random_program_non_degenerate(complexity: Complexity) -> ImageProgram {
+/// (single-colour / flat / fully-transparent). Uses the roundtrip renderer at
+/// 64 px so the check is accurate to what libjxl will actually produce. On
+/// retry we first just re-roll the cheap program-level knobs (RCT + headers)
+/// that often pull a flat result back into colour (this also drops a stray
+/// Alpha/Upsample); only after several failures do we regenerate the tree.
+pub fn random_program_non_degenerate(
+    complexity: Complexity,
+    dims: Option<(u32, u32)>,
+) -> ImageProgram {
     const MAX_TRIES: usize = 10;
     const CHEAP_REROLLS: usize = MAX_TRIES - 3;
     let mut rng = rand::thread_rng();
-    let mut prog = random_program(complexity);
+    let mut prog = random_program(complexity, dims);
     for attempt in 0..MAX_TRIES {
         let text = prog.to_text();
         if let Ok((rgba, _, _, _)) = render::render_roundtrip(&text, 64) {
@@ -133,31 +199,31 @@ pub fn random_program_non_degenerate(complexity: Complexity) -> ImageProgram {
             prog.rct = Some(random_rct(&mut rng));
             prog.extra_headers = random_headers(&mut rng);
         } else {
-            prog = random_program(complexity);
+            prog = random_program(complexity, dims);
         }
     }
     prog
 }
 
-fn random_node(rng: &mut impl Rng, depth: usize, branch_probs: &[f64]) -> Node {
+fn random_node(rng: &mut impl Rng, depth: usize, branch_probs: &[f64], ctx: &GenCtx) -> Node {
     // Branch probability falls off with depth; always a leaf once we run off
     // the end of the curve.
     let branch_prob = branch_probs.get(depth).copied().unwrap_or(0.0);
     if rng.gen::<f64>() < branch_prob {
         // Pick threshold range appropriate to the variable.
         let var = random_var(rng);
-        let threshold = random_threshold_for(&var, rng);
+        let threshold = random_threshold_for(&var, ctx, rng);
         Node::If {
             condition: Condition {
                 var,
                 op: Op::Gt,
                 threshold,
             },
-            on_true: Box::new(random_node(rng, depth + 1, branch_probs)),
-            on_false: Box::new(random_node(rng, depth + 1, branch_probs)),
+            on_true: Box::new(random_node(rng, depth + 1, branch_probs, ctx)),
+            on_false: Box::new(random_node(rng, depth + 1, branch_probs, ctx)),
         }
     } else {
-        Node::Predict(random_predictor(rng))
+        Node::Predict(random_predictor(ctx, rng))
     }
 }
 
@@ -221,6 +287,14 @@ pub enum Mutation {
     /// reserved for the small-canvas generation path. Renders each pixel as a
     /// blocky upscaled block.
     CycleUpsample,
+    /// Step `Bitdepth` to a different curated value. No value rescale — the
+    /// point is to see how the same tree reinterprets at another bit depth
+    /// (lower → posterized, higher → darker/smoother).
+    CycleBitdepth,
+    /// Transpose width and height — flips a wide canvas tall and vice-versa.
+    SwapWidthHeight,
+    /// Add/remove an `Alpha` plane (transparency).
+    ToggleAlpha,
     // ── Exotic predictor (newly-reachable via the tolerant parser) ────────────
     /// Replace a random Predict leaf with an exotic predictor:
     /// NE / NW / NN / WW / NWW / AvgW+N / AvgAll / Gradient / Select.
@@ -244,7 +318,7 @@ pub fn random_compounds(n: usize) -> Vec<Mutation> {
 fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
     let mag: f64 = rng.gen_range(0.10..=0.50);
     let scale = if rng.gen_bool(0.5) { mag } else { -mag };
-    match rng.gen_range(0..16u8) {
+    match rng.gen_range(0..19u8) {
         0 => Mutation::TweakThreshold { scale },
         1 => Mutation::NegateThreshold,
         2 => Mutation::SwapConditionVar,
@@ -260,6 +334,9 @@ fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
         12 => Mutation::PromoteTrueAt,
         13 => Mutation::SwapSubtrees,
         14 => Mutation::CycleUpsample,
+        15 => Mutation::CycleBitdepth,
+        16 => Mutation::SwapWidthHeight,
+        17 => Mutation::ToggleAlpha,
         _ => Mutation::ReplaceSubtreeRandom,
     }
 }
@@ -296,6 +373,9 @@ impl Mutation {
             Mutation::ToggleHeader => "Toggle header".into(),
             Mutation::SwapPredictorExotic => "Swap predictor (exotic)".into(),
             Mutation::CycleUpsample => "Cycle upsample".into(),
+            Mutation::CycleBitdepth => "Cycle bitdepth".into(),
+            Mutation::SwapWidthHeight => "Swap W↔H".into(),
+            Mutation::ToggleAlpha => "Toggle alpha".into(),
             Mutation::Chain(ms) => ms.iter().map(|m| m.label()).collect::<Vec<_>>().join(" → "),
         }
     }
@@ -331,6 +411,8 @@ impl Mutation {
             CycleRct,
             ToggleHeader,
             CycleUpsample,
+            CycleBitdepth,
+            ToggleAlpha,
             // ── Compound ──────────────────────────────────────────────────────
             Chain(vec![TweakThreshold { scale: 0.20 }, SwapPredictor]),
             Chain(vec![SwapBranches, TweakThreshold { scale: -0.30 }]),
@@ -359,6 +441,9 @@ impl Mutation {
 
         let mut rng = rand::thread_rng();
         let mut prog = program.clone();
+        // Value/threshold ranges for any freshly-generated nodes match the
+        // program's own bitdepth / canvas / channels.
+        let ctx = GenCtx::from_program(&prog);
 
         match self {
             Mutation::TweakThreshold { scale } => {
@@ -389,7 +474,7 @@ impl Mutation {
                 let pick = random_var(&mut rng);
                 // Reset the threshold too — a difference-type var keeps the old
                 // coordinate threshold otherwise, making the branch near-dead.
-                let thr = random_threshold_for(&pick, &mut rng);
+                let thr = random_threshold_for(&pick, &ctx, &mut rng);
                 apply_nth_condition(&mut prog.root, n, &mut 0, &mut |c| {
                     c.var = pick.clone();
                     c.threshold = thr;
@@ -418,7 +503,7 @@ impl Mutation {
                     return prog;
                 }
                 let n = rng.gen_range(0..n_preds);
-                let replacement = random_predictor(&mut rng);
+                let replacement = random_predictor(&ctx, &mut rng);
                 apply_nth_predictor(&mut prog.root, n, &mut 0, &mut |p| *p = replacement.clone());
             }
             Mutation::TweakAllOffsets { scale } => {
@@ -435,13 +520,15 @@ impl Mutation {
             }
             Mutation::AddBranch => {
                 let old = std::mem::replace(&mut prog.root, Node::Predict(Predictor::Set(0)));
+                let var = random_var(&mut rng);
+                let threshold = random_threshold_for(&var, &ctx, &mut rng);
                 prog.root = Node::If {
                     condition: Condition {
-                        var: random_var(&mut rng),
+                        var,
                         op: Op::Gt,
-                        threshold: rng.gen_range(0..=255),
+                        threshold,
                     },
-                    on_true: Box::new(Node::Predict(Predictor::Set(rng.gen_range(0i64..=255)))),
+                    on_true: Box::new(Node::Predict(random_predictor(&ctx, &mut rng))),
                     on_false: Box::new(old),
                 };
             }
@@ -505,12 +592,13 @@ impl Mutation {
                     return prog;
                 }
                 let n = rng.gen_range(0..n_leaves);
+                let var = random_var(&mut rng);
                 let condition = Condition {
-                    var: random_var(&mut rng),
+                    threshold: random_threshold_for(&var, &ctx, &mut rng),
+                    var,
                     op: Op::Gt,
-                    threshold: rng.gen_range(0..=255),
                 };
-                let sibling = Node::Predict(random_predictor(&mut rng));
+                let sibling = Node::Predict(random_predictor(&ctx, &mut rng));
                 replace_nth_leaf(&mut prog.root, n, &mut 0, &mut |old_leaf| Node::If {
                     condition: condition.clone(),
                     on_true: Box::new(old_leaf),
@@ -526,7 +614,8 @@ impl Mutation {
                 // Mid-mutation subtree generation always uses the Normal
                 // curve — the user's chosen complexity only governs the
                 // initial random program, not subsequent mutations.
-                let replacement = random_node(&mut rng, 1, Complexity::Normal.branch_probs());
+                let replacement =
+                    random_node(&mut rng, 1, Complexity::Normal.branch_probs(), &ctx);
                 replace_nth_node(&mut prog.root, n, &mut 0, &mut |_| replacement.clone());
             }
             Mutation::CycleRct => {
@@ -556,6 +645,9 @@ impl Mutation {
                 }
             }
             Mutation::CycleUpsample => {
+                // Alpha + Upsample(≥2) crashes jxl_from_tree; they're mutually
+                // exclusive, so adding/raising Upsample drops Alpha.
+                remove_header(&mut prog.extra_headers, "Alpha");
                 let pos = prog
                     .extra_headers
                     .iter()
@@ -572,6 +664,37 @@ impl Mutation {
                         prog.extra_headers[i] = format!("Upsample {}", next);
                     }
                     None => prog.extra_headers.push("Upsample 2".to_string()),
+                }
+            }
+            Mutation::CycleBitdepth => {
+                // Step to a different curated bitdepth; no value rescale.
+                const POOL: &[u32] = &[4, 5, 6, 8, 10, 12];
+                let current = prog.bitdepth;
+                prog.bitdepth = loop {
+                    let b = POOL[rng.gen_range(0..POOL.len())];
+                    if b != current {
+                        break b;
+                    }
+                };
+            }
+            Mutation::SwapWidthHeight => {
+                std::mem::swap(&mut prog.width, &mut prog.height);
+            }
+            Mutation::ToggleAlpha => {
+                let pos = prog
+                    .extra_headers
+                    .iter()
+                    .position(|h| h.split_whitespace().next() == Some("Alpha"));
+                match pos {
+                    Some(i) => {
+                        prog.extra_headers.remove(i);
+                    }
+                    None => {
+                        // Alpha + Upsample(≥2) crashes jxl_from_tree; they're
+                        // mutually exclusive, so adding Alpha drops Upsample.
+                        remove_header(&mut prog.extra_headers, "Upsample");
+                        prog.extra_headers.push("Alpha".to_string());
+                    }
                 }
             }
             Mutation::SwapPredictorExotic => {
@@ -598,6 +721,8 @@ pub fn is_degenerate(rgba: &[u8]) -> bool {
     let (mut mn_r, mut mx_r) = (255u8, 0u8);
     let (mut mn_g, mut mx_g) = (255u8, 0u8);
     let (mut mn_b, mut mx_b) = (255u8, 0u8);
+    let mut alpha_sum: u64 = 0;
+    let mut count: u64 = 0;
     for px in rgba.chunks_exact(4) {
         mn_r = mn_r.min(px[0]);
         mx_r = mx_r.max(px[0]);
@@ -605,12 +730,54 @@ pub fn is_degenerate(rgba: &[u8]) -> bool {
         mx_g = mx_g.max(px[1]);
         mn_b = mn_b.min(px[2]);
         mx_b = mx_b.max(px[2]);
+        alpha_sum += px[3] as u64;
+        count += 1;
     }
     let range = (mx_r - mn_r) as u16 + (mx_g - mn_g) as u16 + (mx_b - mn_b) as u16;
-    range < 10
+    // Non-alpha images decode to alpha=255 everywhere, so this only trips for
+    // alpha-mode programs whose plane renders (near-)fully transparent.
+    let mean_alpha = if count > 0 { alpha_sum / count } else { 0 };
+    range < 10 || mean_alpha < 8
 }
 
 // ── Random primitives ─────────────────────────────────────────────────────────
+
+/// Context for value-scaled generation. Predictor values, thresholds and
+/// offsets are expressed in `0 .. value_max` (= `2^bitdepth - 1`), so a
+/// high-bitdepth program isn't dominated by tiny (dark) values; coordinate
+/// thresholds scale to the actual canvas; `c` conditions scale to the channel
+/// count (4 when an Alpha plane is present).
+#[derive(Debug, Clone, Copy)]
+pub struct GenCtx {
+    value_max: i64,
+    width: u32,
+    height: u32,
+    channels: u32,
+}
+
+impl GenCtx {
+    /// Derive a context from an existing program. Alpha is detected from the
+    /// header (we never emit a `Channels` directive — jxl_from_tree v0.11.2
+    /// rejects it — so the struct's `channels` field stays 3 and the logical
+    /// count comes from the `Alpha` header).
+    fn from_program(p: &ImageProgram) -> Self {
+        let has_alpha = p
+            .extra_headers
+            .iter()
+            .any(|h| h.split_whitespace().next() == Some("Alpha"));
+        GenCtx {
+            value_max: value_max_for(p.bitdepth),
+            width: p.width,
+            height: p.height,
+            channels: if has_alpha { 4 } else { p.channels.max(1) },
+        }
+    }
+}
+
+/// `2^bitdepth - 1`, clamped so the shift can't overflow and is never zero.
+fn value_max_for(bitdepth: u32) -> i64 {
+    ((1i64 << bitdepth.clamp(1, 30)) - 1).max(1)
+}
 
 /// Threshold range class for a condition variable. Picks a sane comparison
 /// range so a swapped-in var isn't compared against a wildly off threshold.
@@ -626,15 +793,21 @@ enum VarClass {
 }
 
 impl VarClass {
-    fn sample(self, rng: &mut impl Rng) -> i64 {
+    fn sample(self, ctx: &GenCtx, rng: &mut impl Rng) -> i64 {
+        let m = ctx.value_max;
         match self {
-            VarClass::Coord => rng.gen_range(50i64..=950),
-            VarClass::Channel => rng.gen_range(0i64..=2),
+            // Coord/Channel are normally intercepted by random_threshold_for;
+            // these are safe fallbacks.
+            VarClass::Coord => rng.gen_range((ctx.width as i64 / 20)..=(ctx.width as i64 * 19 / 20).max(1)),
+            VarClass::Channel => rng.gen_range(0i64..=(ctx.channels as i64 - 1).max(0)),
             VarClass::Small => rng.gen_range(0i64..=3),
-            VarClass::Neighbor => rng.gen_range(-100i64..=300),
-            VarClass::Wgh => rng.gen_range(0i64..=20),
-            VarClass::Value => rng.gen_range(0i64..=255),
-            VarClass::Diff => rng.gen_range(-50i64..=50),
+            VarClass::Neighbor => rng.gen_range((-2 * m / 5)..=(6 * m / 5)),
+            VarClass::Wgh => rng.gen_range(0i64..=(m / 12).max(1)),
+            VarClass::Value => rng.gen_range(0i64..=m),
+            VarClass::Diff => {
+                let d = (m / 5).max(1);
+                rng.gen_range(-d..=d)
+            }
         }
     }
 }
@@ -677,9 +850,15 @@ fn var_class(var: &Var) -> VarClass {
     }
 }
 
-/// Pick a comparison threshold appropriate to `var`'s value class.
-fn random_threshold_for(var: &Var, rng: &mut impl Rng) -> i64 {
-    var_class(var).sample(rng)
+/// Pick a comparison threshold appropriate to `var`'s value class, scaled to
+/// the program's bitdepth / canvas / channel count via `ctx`.
+fn random_threshold_for(var: &Var, ctx: &GenCtx, rng: &mut impl Rng) -> i64 {
+    match var {
+        Var::X => rng.gen_range((ctx.width as i64 / 20)..=(ctx.width as i64 * 19 / 20).max(1)),
+        Var::Y => rng.gen_range((ctx.height as i64 / 20)..=(ctx.height as i64 * 19 / 20).max(1)),
+        Var::C => rng.gen_range(0i64..=(ctx.channels as i64 - 1).max(0)),
+        _ => var_class(var).sample(ctx, rng),
+    }
 }
 
 fn random_var(rng: &mut impl Rng) -> Var {
@@ -705,16 +884,18 @@ fn random_var(rng: &mut impl Rng) -> Var {
     }
 }
 
-fn random_predictor(rng: &mut impl Rng) -> Predictor {
+fn random_predictor(ctx: &GenCtx, rng: &mut impl Rng) -> Predictor {
     // 20% exotic leaf predictor for extra visual range.
     if rng.gen_bool(0.20) {
         return random_exotic_predictor(rng);
     }
-    let offset = rng.gen_range(-32i64..=32);
+    let m = ctx.value_max;
+    let off = (m / 8).max(1);
+    let offset = rng.gen_range(-off..=off);
     match rng.gen_range(0..7u8) {
-        // Signed range so Co/Cg can go negative under RCT-6 — otherwise
-        // red and blue are systematically suppressed.
-        0 => Predictor::Set(rng.gen_range(-128i64..=256)),
+        // Signed range (slightly past the ends) so Co/Cg can go negative under
+        // RCT-6 — otherwise red and blue are systematically suppressed.
+        0 => Predictor::Set(rng.gen_range((-m / 2)..=(m + m / 4))),
         1 => Predictor::N(offset),
         2 => Predictor::W(offset),
         3 => Predictor::AvgNNW(offset),
