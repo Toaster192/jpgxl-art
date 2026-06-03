@@ -511,6 +511,12 @@ kbd {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.picker-tag {
+  font-size: 0.6rem;
+  color: #666;
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
+}
 .size-segments {
   display: inline-flex;
   border: 1px solid #444;

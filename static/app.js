@@ -491,11 +491,14 @@ function syncBarPadding() {
 // so when the rendered card replaces it via fillSlot, no surrounding card
 // shifts. Pass compact=true for gallery cards, whose real head holds only
 // the small byte-size chip (no label).
-function makeSkeleton(compact) {
+function makeSkeleton(compact, ratio) {
   const ph = document.createElement('div');
   ph.className = 'card skeleton';
   const c = document.createElement('div');
   c.className = 'skeleton-canvas';
+  // Match the upcoming image's shape so the real card replaces the ghost with
+  // no reflow (defaults to the CSS 1/1 when no ratio is known).
+  if (ratio) c.style.aspectRatio = ratio;
   ph.appendChild(c);
   const info = document.createElement('div');
   info.className = 'info';
@@ -527,7 +530,37 @@ function fillSlot(slot, label, image, isOriginal, programText, warning, hideLabe
   slot.replaceWith(tmp.firstElementChild);
 }
 
-async function streamFrom(url, method, body, size = 0, signal) {
+async function streamFrom(url, method, body, size = 0, signal, prefill) {
+  let mutationCount = 0;
+  let rendered = 0;
+  let simpleSectionAdded = false;
+  let compoundSectionAdded = false;
+  let compoundIdx = 0;
+
+  // Placeholder bookkeeping. Each render mode reserves its slots the moment
+  // we know how many to expect:
+  //   • mutations  — when the `original` arrives with mutation_count
+  //   • batch      — pre-reserved up front (prefill) so ghosts show instantly,
+  //                  then reconciled against .total
+  //   • gallery    — on the first gallery_image (uses .total)
+  // The slot is then replaced in-place when its payload lands.
+  const mutationQueue = [];
+  const batchSlots = new Map();
+  const gallerySlots = new Map();
+  let batchReserved = false;
+
+  // Reserve the batch ghost cards before the request resolves so they appear
+  // the instant the action starts, already at the right aspect (no wait for
+  // the first render, no reflow). The gallery was wiped by runAction.
+  const batchRatio = prefill && prefill.ratio;
+  if (prefill) {
+    for (let i = 0; i < prefill.count; i++) {
+      const ph = makeSkeleton(false, batchRatio);
+      batchSlots.set(i, ph);
+      gallery.appendChild(ph);
+    }
+  }
+
   const fullUrl = size ? url + (url.includes('?') ? '&' : '?') + `size=${size}` : url;
   const opts = { method, signal };
   if (body) {
@@ -539,22 +572,6 @@ async function streamFrom(url, method, body, size = 0, signal) {
     const msg = await res.text();
     throw new Error(msg || `HTTP ${res.status}`);
   }
-
-  let mutationCount = 0;
-  let rendered = 0;
-  let simpleSectionAdded = false;
-  let compoundSectionAdded = false;
-  let compoundIdx = 0;
-
-  // Placeholder bookkeeping. Each render mode reserves its slots the moment
-  // we know how many to expect:
-  //   • mutations  — when the `original` arrives with mutation_count
-  //   • batch      — on the first batch_image (uses .total)
-  //   • gallery    — on the first gallery_image (uses .total)
-  // The slot is then replaced in-place when its payload lands.
-  const mutationQueue = [];
-  const batchSlots = new Map();
-  const gallerySlots = new Map();
 
   function insertSectionHeader(text) {
     const hdr = document.createElement('div');
@@ -570,9 +587,13 @@ async function streamFrom(url, method, body, size = 0, signal) {
 
   for await (const item of readNdjson(res)) {
     if (item.type === 'batch_image') {
-      if (batchSlots.size === 0) {
-        for (let i = 0; i < item.total; i++) {
-          const ph = makeSkeleton();
+      // Top up any slots not already pre-filled — exactly once (guarded by
+      // batchReserved, since slots get deleted as they fill). No-op when
+      // prefill already covered the count; fallback if it didn't.
+      if (!batchReserved) {
+        batchReserved = true;
+        for (let i = batchSlots.size; i < item.total; i++) {
+          const ph = makeSkeleton(false, batchRatio);
           batchSlots.set(i, ph);
           gallery.appendChild(ph);
         }
@@ -605,8 +626,11 @@ async function streamFrom(url, method, body, size = 0, signal) {
         addSectionHeader(gallery, 'Compound mutations');
         compoundSectionAdded = true;
       }
+      const mutRatio = item.image && item.image.width && item.image.height
+        ? `${item.image.width} / ${item.image.height}`
+        : undefined;
       for (let i = 0; i < mutationCount; i++) {
-        const ph = makeSkeleton();
+        const ph = makeSkeleton(false, mutRatio);
         mutationQueue.push(ph);
         gallery.appendChild(ph);
       }
@@ -803,19 +827,34 @@ aspectSegments.querySelectorAll('.size-seg').forEach(seg => {
   });
 });
 
-// Build the random-batch URL. The default (1:1 + native/1024) sends no dims,
-// preserving the server's default 1024² + occasional pixel-mode. Any explicit
-// shape/size sends width/height at a 16:9 ratio so the canvas is fixed.
-function randomUrl(complexity) {
-  let url = `/api/random/batch?complexity=${complexity}`;
+// Generated-canvas dimensions from the size×aspect selectors, or null for the
+// default (1:1 + native/1024) — where the server picks 1024² + occasional
+// pixel-mode. Explicit shape/size uses a 16:9 ratio.
+function genDims() {
   const base = renderSize || 1024;
-  if (genAspect === 'square' && base === 1024) return url;
+  if (genAspect === 'square' && base === 1024) return null;
   const short = Math.round(base * 9 / 16);
-  let w = base, h = base;
-  if (genAspect === 'wide') h = short;
-  else if (genAspect === 'tall') w = short;
-  return url + `&width=${w}&height=${h}`;
+  if (genAspect === 'wide') return { w: base, h: short };
+  if (genAspect === 'tall') return { w: short, h: base };
+  return { w: base, h: base };
 }
+
+// CSS aspect-ratio string for the upcoming generated cards (square by default).
+function genAspectRatio() {
+  const d = genDims();
+  return d ? `${d.w} / ${d.h}` : '1 / 1';
+}
+
+// Build the random-batch URL. No dims for the default square+1024 case so the
+// server keeps its pixel-mode; otherwise the fixed canvas from genDims().
+function randomUrl(complexity) {
+  const url = `/api/random/batch?complexity=${complexity}`;
+  const d = genDims();
+  return d ? url + `&width=${d.w}&height=${d.h}` : url;
+}
+
+// Must match the server's random_batch COUNT.
+const BATCH_COUNT = 20;
 
 function bindSizes(btn, busy, url, method, body) {
   btn.addEventListener('click', () =>
@@ -828,7 +867,8 @@ function bindSizes(btn, busy, url, method, body) {
 // (seeded "0 / 20" so it doesn't resize) — the narrow side buttons stay put.
 function bindRandom(triggerBtn, complexity) {
   triggerBtn.addEventListener('click', () => runAction(randomBtn, '0 / 20',
-    signal => streamFrom(randomUrl(complexity), 'GET', null, 0, signal)));
+    signal => streamFrom(randomUrl(complexity), 'GET', null, 0, signal,
+      { count: BATCH_COUNT, ratio: genAspectRatio() })));
 }
 bindRandom(randomBtn,        1);
 bindRandom(randomSimpleBtn,  0);
