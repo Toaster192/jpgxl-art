@@ -80,14 +80,32 @@ pub fn random_program(complexity: Complexity) -> ImageProgram {
         on_true: Box::new(random_node(&mut rng, 1, probs)),
         on_false: Box::new(random_node(&mut rng, 1, probs)),
     };
+    let mut extra_headers = random_headers(&mut rng);
+
+    // ~15% "pixel mode": a small canvas upscaled by Upsample with a low
+    // bitdepth — the blocky pixel-art aesthetic that's all over the gallery.
+    // This is the only place factor 8 is used (CycleUpsample caps at 4, since
+    // 8× a 1024² program would decode to 8192²). The factor is derived so the
+    // upscaled native size (dim*factor) never exceeds 1024 — `decode_jxl`
+    // decodes at native resolution before downscaling, so an unbounded factor
+    // would make a generated program far slower to render than a default 1024².
+    let (width, height, bitdepth) = if rng.gen_bool(0.15) {
+        let dim = [64u32, 96, 128, 256][rng.gen_range(0..4)];
+        let factor = (1024 / dim).min(8); // 64→8, 96→8, 128→8, 256→4
+        extra_headers.push(format!("Upsample {}", factor));
+        (dim, dim, rng.gen_range(4u32..=6))
+    } else {
+        (1024, 1024, 8)
+    };
+
     ImageProgram {
-        width: 1024,
-        height: 1024,
-        bitdepth: 8,
+        width,
+        height,
+        bitdepth,
         channels: 3,
         orientation: Some(rng.gen_range(1u32..=8)),
         rct: Some(random_rct(&mut rng)),
-        extra_headers: random_headers(&mut rng),
+        extra_headers,
         splines: Vec::new(),
         root,
     }
@@ -128,13 +146,7 @@ fn random_node(rng: &mut impl Rng, depth: usize, branch_probs: &[f64]) -> Node {
     if rng.gen::<f64>() < branch_prob {
         // Pick threshold range appropriate to the variable.
         let var = random_var(rng);
-        let threshold = match var {
-            Var::X | Var::Y => rng.gen_range(50i64..=950),
-            Var::C => rng.gen_range(0i64..=2),
-            Var::W | Var::N => rng.gen_range(-100i64..=300),
-            Var::WGH => rng.gen_range(0i64..=20),
-            Var::Other(_) => unreachable!("random_var doesn't emit Var::Other"),
-        };
+        let threshold = random_threshold_for(&var, rng);
         Node::If {
             condition: Condition {
                 var,
@@ -204,6 +216,11 @@ pub enum Mutation {
     /// Flip one gallery-relevant header flag in `extra_headers`
     /// (Gaborish / XYB / DeltaPalette / Squeeze).
     ToggleHeader,
+    /// Add or cycle the `Upsample` factor (none → 2 → 4 → 2). Capped at 4:
+    /// on a 1024² program `Upsample 8` would decode to 8192², so factor 8 is
+    /// reserved for the small-canvas generation path. Renders each pixel as a
+    /// blocky upscaled block.
+    CycleUpsample,
     // ── Exotic predictor (newly-reachable via the tolerant parser) ────────────
     /// Replace a random Predict leaf with an exotic predictor:
     /// NE / NW / NN / WW / NWW / AvgW+N / AvgAll / Gradient / Select.
@@ -227,7 +244,7 @@ pub fn random_compounds(n: usize) -> Vec<Mutation> {
 fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
     let mag: f64 = rng.gen_range(0.10..=0.50);
     let scale = if rng.gen_bool(0.5) { mag } else { -mag };
-    match rng.gen_range(0..15u8) {
+    match rng.gen_range(0..16u8) {
         0 => Mutation::TweakThreshold { scale },
         1 => Mutation::NegateThreshold,
         2 => Mutation::SwapConditionVar,
@@ -242,6 +259,7 @@ fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
         11 => Mutation::RemoveBranchAt,
         12 => Mutation::PromoteTrueAt,
         13 => Mutation::SwapSubtrees,
+        14 => Mutation::CycleUpsample,
         _ => Mutation::ReplaceSubtreeRandom,
     }
 }
@@ -277,6 +295,7 @@ impl Mutation {
             Mutation::CycleRct => "Cycle RCT".into(),
             Mutation::ToggleHeader => "Toggle header".into(),
             Mutation::SwapPredictorExotic => "Swap predictor (exotic)".into(),
+            Mutation::CycleUpsample => "Cycle upsample".into(),
             Mutation::Chain(ms) => ms.iter().map(|m| m.label()).collect::<Vec<_>>().join(" → "),
         }
     }
@@ -311,6 +330,7 @@ impl Mutation {
             // ── Program-level ─────────────────────────────────────────────────
             CycleRct,
             ToggleHeader,
+            CycleUpsample,
             // ── Compound ──────────────────────────────────────────────────────
             Chain(vec![TweakThreshold { scale: 0.20 }, SwapPredictor]),
             Chain(vec![SwapBranches, TweakThreshold { scale: -0.30 }]),
@@ -367,7 +387,13 @@ impl Mutation {
                 }
                 let n = rng.gen_range(0..n_conds);
                 let pick = random_var(&mut rng);
-                apply_nth_condition(&mut prog.root, n, &mut 0, &mut |c| c.var = pick.clone());
+                // Reset the threshold too — a difference-type var keeps the old
+                // coordinate threshold otherwise, making the branch near-dead.
+                let thr = random_threshold_for(&pick, &mut rng);
+                apply_nth_condition(&mut prog.root, n, &mut 0, &mut |c| {
+                    c.var = pick.clone();
+                    c.threshold = thr;
+                });
             }
             Mutation::SwapBranches => {
                 let n_conds = count_conditions(&prog.root);
@@ -529,6 +555,25 @@ impl Mutation {
                     }
                 }
             }
+            Mutation::CycleUpsample => {
+                let pos = prog
+                    .extra_headers
+                    .iter()
+                    .position(|h| h.split_whitespace().next() == Some("Upsample"));
+                match pos {
+                    Some(i) => {
+                        let cur: u32 = prog.extra_headers[i]
+                            .split_whitespace()
+                            .nth(1)
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(2);
+                        // none → +2 (handled below) → 4 → 2 → 4 …; never 8 here.
+                        let next = if cur >= 4 { 2 } else { 4 };
+                        prog.extra_headers[i] = format!("Upsample {}", next);
+                    }
+                    None => prog.extra_headers.push("Upsample 2".to_string()),
+                }
+            }
             Mutation::SwapPredictorExotic => {
                 let n_preds = count_predictors(&prog.root);
                 if n_preds == 0 {
@@ -567,10 +612,89 @@ pub fn is_degenerate(rgba: &[u8]) -> bool {
 
 // ── Random primitives ─────────────────────────────────────────────────────────
 
+/// Threshold range class for a condition variable. Picks a sane comparison
+/// range so a swapped-in var isn't compared against a wildly off threshold.
+#[derive(Debug, Clone, Copy)]
+enum VarClass {
+    Coord,    // x, y — image coordinates
+    Channel,  // c — channel index
+    Small,    // g — group index
+    Neighbor, // W, N — neighbour pixel values
+    Wgh,      // WGH — weighted-predictor error magnitude
+    Value,    // gradient / abs / prev value, pixel-valued
+    Diff,     // neighbour differences, centred on 0
+}
+
+impl VarClass {
+    fn sample(self, rng: &mut impl Rng) -> i64 {
+        match self {
+            VarClass::Coord => rng.gen_range(50i64..=950),
+            VarClass::Channel => rng.gen_range(0i64..=2),
+            VarClass::Small => rng.gen_range(0i64..=3),
+            VarClass::Neighbor => rng.gen_range(-100i64..=300),
+            VarClass::Wgh => rng.gen_range(0i64..=20),
+            VarClass::Value => rng.gen_range(0i64..=255),
+            VarClass::Diff => rng.gen_range(-50i64..=50),
+        }
+    }
+}
+
+/// Composite/expression condition variables drawn from the gallery corpus.
+/// These are *expressions*, not modelled internals, so they ride along as
+/// `Var::Other` and round-trip verbatim through `to_text`. All are confirmed
+/// valid as `jxl_from_tree` condition properties (unlike bare neighbour names
+/// such as `NE`/`NN`, which are only legal *inside* composites like these).
+const COMPOSITE_VARS: &[(&str, VarClass)] = &[
+    ("W+N-NW", VarClass::Value), // gradient-predictor expression (most common)
+    ("|W|", VarClass::Value),
+    ("|N|", VarClass::Value),
+    ("N-NE", VarClass::Diff),
+    ("NW-N", VarClass::Diff),
+    ("W-NW", VarClass::Diff),
+    ("N-NN", VarClass::Diff),
+    ("W-WW", VarClass::Diff),
+    ("W-WW-NW+NWW", VarClass::Diff),
+    ("g", VarClass::Small),
+    ("Prev", VarClass::Value), // previous-channel value (needs a `c` split to matter)
+    ("PrevErr", VarClass::Diff),
+];
+
+fn var_class(var: &Var) -> VarClass {
+    if let Var::Other(s) = var {
+        for (name, class) in COMPOSITE_VARS {
+            if *name == s.as_str() {
+                return *class;
+            }
+        }
+    }
+    match var {
+        Var::X | Var::Y => VarClass::Coord,
+        Var::C => VarClass::Channel,
+        Var::W | Var::N => VarClass::Neighbor,
+        Var::WGH => VarClass::Wgh,
+        // Unknown pasted expression: treat as pixel-valued.
+        Var::Other(_) => VarClass::Value,
+    }
+}
+
+/// Pick a comparison threshold appropriate to `var`'s value class.
+fn random_threshold_for(var: &Var, rng: &mut impl Rng) -> i64 {
+    var_class(var).sample(rng)
+}
+
 fn random_var(rng: &mut impl Rng) -> Var {
-    // Bare exotic neighbour names (NE/NW/NN/NWW/WW) are *not* in libjxl's
-    // condition-property whitelist — they're only valid inside composites
-    // like `N-NE` / `W+N-NW`. Keep this to the structured set.
+    // ~35% of the time use a composite/expression var from the corpus. These
+    // parse as Var::Other and round-trip verbatim. Bare exotic neighbour names
+    // (NE/NW/NN/NWW/WW) are deliberately absent — they're not in libjxl's
+    // condition-property whitelist on their own, only inside these composites.
+    if rng.gen_bool(0.35) {
+        // `W+N-NW` dominates real-world art, so give it extra weight.
+        if rng.gen_bool(0.40) {
+            return Var::Other("W+N-NW".to_string());
+        }
+        let (name, _) = COMPOSITE_VARS[rng.gen_range(0..COMPOSITE_VARS.len())];
+        return Var::Other(name.to_string());
+    }
     match rng.gen_range(0..6u8) {
         0 => Var::X,
         1 => Var::Y,

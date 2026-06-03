@@ -233,6 +233,8 @@ const EXTRA_HEADER_KEYS: &[&str] = &[
     "SplineQuantizationAdjustment",
     "CbYCr",
     "PQ",
+    "GroupShift",
+    "FloatExpBits",
 ];
 
 impl ImageProgram {
