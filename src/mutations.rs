@@ -239,6 +239,12 @@ pub enum Mutation {
     TweakThreshold {
         scale: f64,
     },
+    /// Independently jitter *every* threshold by a random amount up to ±scale
+    /// of its own magnitude. A diffuse "shimmer" — distinct from the single
+    /// targeted nudge of `TweakThreshold`.
+    JitterThresholds {
+        scale: f64,
+    },
     /// Negate a randomly-chosen condition's threshold.
     NegateThreshold,
     /// Replace the variable in a randomly-chosen condition with a random one.
@@ -253,6 +259,11 @@ pub enum Mutation {
     SwapPredictor,
     /// Shift every predictor offset by ±scale of the average offset magnitude.
     TweakAllOffsets {
+        scale: f64,
+    },
+    /// Nudge a single randomly-chosen leaf's offset by ±scale of its value.
+    /// Surgical complement to `TweakAllOffsets` (which shifts all uniformly).
+    TweakSingleOffset {
         scale: f64,
     },
     // ── Structural mutations ──────────────────────────────────────────────────
@@ -278,6 +289,12 @@ pub enum Mutation {
     /// Replace a random sub-tree (any node) with a freshly-generated random
     /// subtree. More disruptive than `SwapPredictor`.
     ReplaceSubtreeRandom,
+    /// Clone one randomly-chosen subtree over another node, producing
+    /// self-similar / repeated structure.
+    DuplicateSubtree,
+    /// Collapse every node below a random depth to a single leaf, flattening
+    /// the tree's fine detail while keeping its coarse structure.
+    PruneDeepBranches,
     // ── Program-level (headers / colour transform) ────────────────────────────
     /// Pick a different RCT (reversible colour transform) preset.
     /// Huge visual impact — re-interprets channel values as a different
@@ -322,7 +339,7 @@ pub fn random_compounds(n: usize) -> Vec<Mutation> {
 fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
     let mag: f64 = rng.gen_range(0.10..=0.50);
     let scale = if rng.gen_bool(0.5) { mag } else { -mag };
-    match rng.gen_range(0..19u8) {
+    match rng.gen_range(0..23u8) {
         0 => Mutation::TweakThreshold { scale },
         1 => Mutation::NegateThreshold,
         2 => Mutation::SwapConditionVar,
@@ -341,7 +358,11 @@ fn random_simple_mutation(rng: &mut impl Rng) -> Mutation {
         15 => Mutation::CycleBitdepth,
         16 => Mutation::SwapWidthHeight,
         17 => Mutation::ToggleAlpha,
-        _ => Mutation::ReplaceSubtreeRandom,
+        18 => Mutation::ReplaceSubtreeRandom,
+        19 => Mutation::TweakSingleOffset { scale },
+        20 => Mutation::JitterThresholds { scale },
+        21 => Mutation::DuplicateSubtree,
+        _ => Mutation::PruneDeepBranches,
     }
 }
 
@@ -355,6 +376,9 @@ impl Mutation {
             Mutation::TweakThreshold { scale } => {
                 format!("Threshold {:+}%", (scale * 100.0).round() as i64)
             }
+            Mutation::JitterThresholds { scale } => {
+                format!("Jitter thresholds ±{}%", (scale.abs() * 100.0).round() as i64)
+            }
             Mutation::NegateThreshold => "Negate threshold".into(),
             Mutation::SwapConditionVar => "Swap cond var".into(),
             Mutation::SwapBranches => "Swap branches".into(),
@@ -365,6 +389,9 @@ impl Mutation {
             Mutation::TweakAllOffsets { scale } => {
                 format!("All offsets {:+}%", (scale * 100.0).round() as i64)
             }
+            Mutation::TweakSingleOffset { scale } => {
+                format!("One offset {:+}%", (scale * 100.0).round() as i64)
+            }
             Mutation::AddBranch => "Add branch".into(),
             Mutation::RemoveBranch => "Remove branch".into(),
             Mutation::PromoteTrueBranch => "Promote true branch".into(),
@@ -373,6 +400,8 @@ impl Mutation {
             Mutation::SwapSubtrees => "Swap subtrees".into(),
             Mutation::InsertIfAtLeaf => "Insert if at leaf".into(),
             Mutation::ReplaceSubtreeRandom => "Replace subtree".into(),
+            Mutation::DuplicateSubtree => "Duplicate subtree".into(),
+            Mutation::PruneDeepBranches => "Prune deep branches".into(),
             Mutation::CycleRct => "Cycle RCT".into(),
             Mutation::ToggleHeader => "Toggle header".into(),
             Mutation::SwapPredictorExotic => "Swap predictor (exotic)".into(),
@@ -392,6 +421,7 @@ impl Mutation {
             TweakThreshold { scale: -0.15 },
             TweakThreshold { scale: 0.40 },
             TweakThreshold { scale: -0.40 },
+            JitterThresholds { scale: 0.15 },
             NegateThreshold,
             // ── Condition / branch structure ──────────────────────────────────
             SwapBranches,
@@ -404,11 +434,14 @@ impl Mutation {
             SwapSubtrees,
             InsertIfAtLeaf,
             ReplaceSubtreeRandom,
+            DuplicateSubtree,
+            PruneDeepBranches,
             // ── Predictor / value ─────────────────────────────────────────────
             TweakSetValue { scale: 0.20 },
             TweakSetValue { scale: -0.20 },
             TweakAllOffsets { scale: 0.25 },
             TweakAllOffsets { scale: -0.25 },
+            TweakSingleOffset { scale: 0.35 },
             SwapPredictor,
             SwapPredictorExotic,
             // ── Program-level ─────────────────────────────────────────────────
@@ -631,6 +664,52 @@ impl Mutation {
                 // initial random program, not subsequent mutations.
                 let replacement = random_node(&mut rng, 1, Complexity::Normal.branch_probs(), &ctx);
                 replace_nth_node(&mut prog.root, n, &mut 0, &mut |_| replacement.clone());
+            }
+            Mutation::JitterThresholds { scale } => {
+                if count_conditions(&prog.root) == 0 {
+                    return prog;
+                }
+                jitter_thresholds(&mut prog.root, &mut rng, scale.abs());
+            }
+            Mutation::TweakSingleOffset { scale } => {
+                let offsets = collect_offsets(&prog.root);
+                if offsets.is_empty() {
+                    return prog;
+                }
+                let n = rng.gen_range(0..offsets.len());
+                let delta = relative_delta(offsets[n], &offsets, *scale);
+                apply_nth_offset(&mut prog.root, n, &mut 0, &mut |o| *o += delta);
+            }
+            Mutation::DuplicateSubtree => {
+                let mut paths: Vec<Vec<bool>> = Vec::new();
+                collect_node_paths(&prog.root, &mut Vec::new(), &mut paths);
+                if paths.len() < 2 {
+                    return prog;
+                }
+                // Pick a distinct source/destination pair. Any two distinct
+                // nodes are valid: we clone the source subtree before writing,
+                // so ancestor/descendant overlaps stay finite (and produce the
+                // self-similar nesting that's the point of this mutation).
+                let i = rng.gen_range(0..paths.len());
+                let mut j = rng.gen_range(0..paths.len());
+                while j == i {
+                    j = rng.gen_range(0..paths.len());
+                }
+                let src = paths[i].clone();
+                let dst = paths[j].clone();
+                let src_clone = get_subtree_mut(&mut prog.root, &src).clone();
+                *get_subtree_mut(&mut prog.root, &dst) = src_clone;
+            }
+            Mutation::PruneDeepBranches => {
+                let max_d = tree_depth(&prog.root);
+                if max_d < 2 {
+                    return prog;
+                }
+                // Prune only the deepest 1-2 levels: this flattens fine detail
+                // while keeping the coarse structure. Pruning from the top down
+                // (small `d`) would collapse the whole image to a flat colour.
+                let d = rng.gen_range(max_d.saturating_sub(2).max(1)..max_d);
+                prune_below(&mut prog.root, 0, d);
             }
             Mutation::CycleRct => {
                 // Skip the current value so the mutation is always-visible.
@@ -1305,6 +1384,88 @@ fn swap_subtrees_at(root: &mut Node, a: &[bool], b: &[bool]) {
     let subtree_a = std::mem::replace(get_subtree_mut(root, a), placeholder);
     let subtree_b = std::mem::replace(get_subtree_mut(root, b), subtree_a);
     *get_subtree_mut(root, a) = subtree_b;
+}
+
+/// Apply `f` to the offset inside the n-th offset-bearing predictor leaf
+/// (N / W / Avg* / Weighted), in the same DFS order `collect_offsets` walks.
+/// Used by `TweakSingleOffset`.
+fn apply_nth_offset(node: &mut Node, n: usize, seen: &mut usize, f: &mut dyn FnMut(&mut i64)) {
+    match node {
+        Node::If {
+            on_true, on_false, ..
+        } => {
+            apply_nth_offset(on_true, n, seen, f);
+            apply_nth_offset(on_false, n, seen, f);
+        }
+        Node::Predict(pred) => {
+            if let Predictor::N(o)
+            | Predictor::W(o)
+            | Predictor::AvgNNW(o)
+            | Predictor::AvgNNE(o)
+            | Predictor::AvgWNW(o)
+            | Predictor::Weighted(o) = pred
+            {
+                if *seen == n {
+                    f(o);
+                }
+                *seen += 1;
+            }
+        }
+    }
+}
+
+/// Independently nudge every condition threshold by a random amount up to
+/// ±`scale` of its own magnitude (at least ±1). Used by `JitterThresholds`.
+fn jitter_thresholds(node: &mut Node, rng: &mut impl Rng, scale: f64) {
+    if let Node::If {
+        condition,
+        on_true,
+        on_false,
+    } = node
+    {
+        let mag = ((condition.threshold.abs() as f64 * scale).round() as i64).max(1);
+        condition.threshold += rng.gen_range(-mag..=mag);
+        jitter_thresholds(on_true, rng, scale);
+        jitter_thresholds(on_false, rng, scale);
+    }
+}
+
+/// Longest root-to-leaf path length in If-nodes (a lone leaf has depth 0).
+fn tree_depth(node: &Node) -> usize {
+    match node {
+        Node::Predict(_) => 0,
+        Node::If {
+            on_true, on_false, ..
+        } => 1 + tree_depth(on_true).max(tree_depth(on_false)),
+    }
+}
+
+/// First Predict leaf reached by always taking `on_true`. Used to pick a
+/// representative leaf when `PruneDeepBranches` collapses a subtree.
+fn first_predictor(node: &Node) -> Predictor {
+    match node {
+        Node::Predict(p) => p.clone(),
+        Node::If { on_true, .. } => first_predictor(on_true),
+    }
+}
+
+/// Collapse every If at or below `max_depth` (measured from this call's
+/// `depth`) into a single representative leaf. Used by `PruneDeepBranches`.
+fn prune_below(node: &mut Node, depth: usize, max_depth: usize) {
+    if depth >= max_depth {
+        if matches!(node, Node::If { .. }) {
+            let leaf = first_predictor(node);
+            *node = Node::Predict(leaf);
+        }
+        return;
+    }
+    if let Node::If {
+        on_true, on_false, ..
+    } = node
+    {
+        prune_below(on_true, depth + 1, max_depth);
+        prune_below(on_false, depth + 1, max_depth);
+    }
 }
 
 /// Add `delta` to every non-Set predictor offset in the tree.

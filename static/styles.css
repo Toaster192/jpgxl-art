@@ -154,8 +154,6 @@ textarea#program::selection { background: rgba(120, 160, 200, 0.35); }
 .tk-fn      { color: var(--accent-text, #6cc06c); }   /* predictors + cond vars */
 .tk-num     { color: #b5cea8; }
 .tk-var     { color: #d6b85a; }   /* x/y/c */
-.tk-string  { color: #cd9178; }   /* unused for jxl-art; kept for future */
-.tk-comment { color: #6a8a5a; font-style: italic; }   /* unused for jxl-art */
 .render-btn {
   align-self: flex-start;
   padding: 0.4rem 1rem;
