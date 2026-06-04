@@ -453,24 +453,6 @@ impl Mutation {
             CycleUpsample,
             CycleBitdepth,
             ToggleAlpha,
-            // ── Compound ──────────────────────────────────────────────────────
-            Chain(vec![TweakThreshold { scale: 0.20 }, SwapPredictor]),
-            Chain(vec![SwapBranches, TweakThreshold { scale: -0.30 }]),
-            Chain(vec![SwapConditionVar, NegateThreshold]),
-            Chain(vec![AddBranch, TweakAllOffsets { scale: 0.25 }]),
-            Chain(vec![
-                AddBranch,
-                SwapConditionVar,
-                TweakThreshold { scale: 0.20 },
-            ]),
-            Chain(vec![SwapConditionVar, NegateThreshold, SwapPredictor]),
-            Chain(vec![
-                TweakThreshold { scale: 0.30 },
-                SwapBranches,
-                TweakAllOffsets { scale: -0.20 },
-            ]),
-            Chain(vec![CycleRct, SwapPredictorExotic]),
-            Chain(vec![ToggleHeader, TweakAllOffsets { scale: 0.30 }]),
         ]
     }
 
