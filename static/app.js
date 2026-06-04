@@ -218,12 +218,21 @@ function showZoom(srcCanvas, programText) {
         setZoomStatus('');
         zoomAbort = null;
       };
-      img.src = 'data:image/webp;base64,' + payload.webp_b64;
+      img.src = payloadSrc(payload);
     })
     .catch(err => {
       if (err.name === 'AbortError' || zoomAbort !== ctrl) return;
       setZoomStatus('full-res unavailable');
     });
+}
+
+// Build the <img> source for a payload. JXL-capable clients receive raw JXL
+// (`jxl_b64`); everyone else gets the WebP fallback (`webp_b64`). Exactly one
+// is present per payload.
+function payloadSrc(payload) {
+  return payload.jxl_b64
+    ? 'data:image/jxl;base64,' + payload.jxl_b64
+    : 'data:image/webp;base64,' + payload.webp_b64;
 }
 
 // Async generator over an ND-JSON response body. Breaking out of the
@@ -255,7 +264,7 @@ async function fetchSingleRender(programText, signal) {
   const res = await fetch('/api/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ program_text: programText, mode: 'single', size: 0 }),
+    body: JSON.stringify({ program_text: programText, mode: 'single', size: 0, jxl: jxlOk }),
     signal,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -561,11 +570,19 @@ async function streamFrom(url, method, body, size = 0, signal, prefill) {
     }
   }
 
-  const fullUrl = size ? url + (url.includes('?') ? '&' : '?') + `size=${size}` : url;
+  // Ask for raw JXL on every interactive stream when the browser supports it.
+  // The gallery is served from a pre-rendered WebP cache, so it opts out.
+  const wantJxl = jxlOk && !url.includes('/api/gallery');
+  let fullUrl = size ? url + (url.includes('?') ? '&' : '?') + `size=${size}` : url;
   const opts = { method, signal };
   if (body) {
     opts.headers = { 'Content-Type': 'application/json' };
-    opts.body = JSON.stringify(size ? { ...body, size } : body);
+    const payload = { ...body };
+    if (size) payload.size = size;
+    if (wantJxl) payload.jxl = true;
+    opts.body = JSON.stringify(payload);
+  } else if (wantJxl) {
+    fullUrl += (fullUrl.includes('?') ? '&' : '?') + 'jxl=true';
   }
   const res = await fetch(fullUrl, opts);
   if (!res.ok) {
@@ -1045,7 +1062,7 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
   const ctx = canvas.getContext('2d');
   const img = new Image();
   img.onload = () => ctx.drawImage(img, 0, 0);
-  img.src = 'data:image/webp;base64,' + payload.webp_b64;
+  img.src = payloadSrc(payload);
 
   // Gallery thumbnails are downsampled server-side, so on zoom we kick off
   // a native-resolution render in the background. `hideLabel` is the
@@ -1362,6 +1379,29 @@ async function decodeZcode(zcode) {
 const zcodeSupported = typeof CompressionStream !== 'undefined'
   && typeof DecompressionStream !== 'undefined';
 
+// Some browsers (Safari 17+) can display JPEG XL directly in an <img>; most
+// can't (Chrome dropped it in 2023, Firefox is nightly-only). When the client
+// can, the server ships the raw JXL instead of re-encoding to WebP — far
+// smaller on the wire, since the JXL is the program itself, not the decoded
+// high-entropy pixels. We feature-detect by decoding a tiny embedded JXL
+// (3×3, 19 bytes); images are base64-embedded in the NDJSON stream rather than
+// fetched, so HTTP Accept negotiation can't do this for us.
+let jxlOk = false;
+const JXL_TEST_SRC = 'data:image/jxl;base64,/woQEAAJCAYBABwASzgpSAIgGA==';
+async function detectJxl() {
+  try {
+    const img = new Image();
+    img.src = JXL_TEST_SRC;
+    await img.decode();
+    jxlOk = img.naturalWidth > 0;
+  } catch {
+    jxlOk = false;
+  }
+}
+
 initSavedIdCounter();
 updateSavedBtnLabel();
-main();
+// Resolve JXL support before the first render so the initial stream already
+// uses it; later renders read the same `jxlOk` global. `finally` ensures we
+// boot even if detection throws.
+detectJxl().finally(main);

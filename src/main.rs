@@ -60,7 +60,15 @@ use tree::ImageProgram;
 
 #[derive(Serialize)]
 struct ImagePayload {
-    webp_b64: String,
+    /// Lossless WebP, base64. Present for clients that can't display JXL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    webp_b64: Option<String>,
+    /// Raw JXL bytes, base64. Present only when the client signalled JXL
+    /// support — the browser decodes this directly, so we skip the WebP
+    /// re-encode and ship a far smaller payload. Exactly one of these two
+    /// fields is populated per payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jxl_b64: Option<String>,
     width: u32,
     height: u32,
     jxl_size: u64,
@@ -114,6 +122,10 @@ struct RenderRequest {
     size: u32,
     #[serde(default)]
     mode: RenderMode,
+    /// Client can display JXL directly (feature-detected in the browser) →
+    /// ship raw JXL instead of WebP. Ignored if absent (defaults to false).
+    #[serde(default)]
+    jxl: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -121,6 +133,9 @@ struct SizeQuery {
     /// 0 = native resolution, any other value = render at that max dimension.
     #[serde(default)]
     size: u32,
+    /// Client supports JXL display (see `RenderRequest::jxl`).
+    #[serde(default)]
+    jxl: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -135,6 +150,9 @@ struct RandomQuery {
     width: Option<u32>,
     #[serde(default)]
     height: Option<u32>,
+    /// Client supports JXL display (see `RenderRequest::jxl`).
+    #[serde(default)]
+    jxl: bool,
 }
 
 impl RandomQuery {
@@ -150,7 +168,7 @@ impl RandomQuery {
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 async fn generate(Query(q): Query<SizeQuery>) -> Response {
-    stream_response(ImageProgram::example_jxlart(), q.size, vec![])
+    stream_response(ImageProgram::example_jxlart(), q.size, vec![], q.jxl)
 }
 
 // No longer used by the bundled UI (the "Randomize 1" button was removed in
@@ -162,13 +180,14 @@ async fn randomize(Query(q): Query<RandomQuery>) -> Response {
     let prog = tokio::task::spawn_blocking(move || random_program_non_degenerate(complexity, dims))
         .await
         .expect("random_program_non_degenerate panicked");
-    stream_response(prog, 0, Mutation::showcase())
+    stream_response(prog, 0, Mutation::showcase(), q.jxl)
 }
 
 async fn random_batch(Query(q): Query<RandomQuery>) -> Response {
     const COUNT: usize = 20;
     let complexity = Complexity::from_u8(q.complexity);
     let dims = q.dims();
+    let want_jxl = q.jxl;
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
@@ -177,7 +196,7 @@ async fn random_batch(Query(q): Query<RandomQuery>) -> Response {
                 tokio::task::spawn_blocking(move || {
                     let prog = random_program_non_degenerate(complexity, dims);
                     let program_text = prog.to_text();
-                    let image = render_to_payload(&program_text, 0, encode_preview_webp);
+                    let image = render_to_payload(&program_text, 0, want_jxl, encode_preview_webp);
                     (i, program_text, image)
                 })
                 .await
@@ -275,6 +294,7 @@ async fn prerender_gallery() {
                 let image = render_to_payload_logged(
                     e.program_text,
                     size,
+                    false,
                     encode_gallery_webp,
                     Some(e.name),
                 );
@@ -367,16 +387,26 @@ async fn render(
     Json(req): Json<RenderRequest>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
     match req.mode {
-        RenderMode::Single => Ok(stream_single(req.program_text, req.size)),
+        RenderMode::Single => Ok(stream_single(req.program_text, req.size, req.jxl)),
         RenderMode::Mutations => {
             let prog = ImageProgram::from_text(&req.program_text)
                 .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
-            Ok(stream_response(prog, req.size, Mutation::showcase()))
+            Ok(stream_response(
+                prog,
+                req.size,
+                Mutation::showcase(),
+                req.jxl,
+            ))
         }
         RenderMode::Compound20 => {
             let prog = ImageProgram::from_text(&req.program_text)
                 .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
-            Ok(stream_response(prog, req.size, random_compounds(20)))
+            Ok(stream_response(
+                prog,
+                req.size,
+                random_compounds(20),
+                req.jxl,
+            ))
         }
     }
 }
@@ -429,8 +459,13 @@ type WebpEncoder = fn(&[u8], u32, u32) -> Vec<u8>;
 /// picks between `encode_preview_webp` (lossless, for interactive
 /// render/mutation cards) and `encode_gallery_webp` (lossy, for the
 /// pre-rendered gallery).
-fn render_to_payload(program_text: &str, size: u32, encoder: WebpEncoder) -> ImagePayload {
-    render_to_payload_logged(program_text, size, encoder, None)
+fn render_to_payload(
+    program_text: &str,
+    size: u32,
+    want_jxl: bool,
+    encoder: WebpEncoder,
+) -> ImagePayload {
+    render_to_payload_logged(program_text, size, want_jxl, encoder, None)
 }
 
 /// Same as `render_to_payload`, but logs failures to stderr with a
@@ -439,11 +474,16 @@ fn render_to_payload(program_text: &str, size: u32, encoder: WebpEncoder) -> Ima
 fn render_to_payload_logged(
     program_text: &str,
     size: u32,
+    want_jxl: bool,
     encoder: WebpEncoder,
     log_label: Option<&str>,
 ) -> ImagePayload {
-    match render_roundtrip(program_text, size) {
-        Ok((rgba, w, h, jxl_size)) => to_payload(&rgba, w, h, jxl_size, encoder),
+    // In JXL mode the browser decodes the JXL at native res, so we decode
+    // natively too (size = 0) — the canvas needs native dims and the resize
+    // would be wasted work. The `size` downscale only applies to WebP.
+    let decode_size = if want_jxl { 0 } else { size };
+    match render_roundtrip(program_text, decode_size) {
+        Ok((rgba, w, h, jxl)) => to_payload(&rgba, w, h, &jxl, want_jxl, encoder),
         Err(e) => {
             if let Some(label) = log_label {
                 eprintln!("render failed for {label:?}: {e}");
@@ -457,13 +497,13 @@ fn render_to_payload_logged(
 /// bypass our strict Rust parser on purpose, so users can render any jxl-art
 /// text `jxl_from_tree` accepts, even if it uses syntax our tree data types
 /// don't model.
-fn stream_single(program_text: String, size: u32) -> Response {
+fn stream_single(program_text: String, size: u32, want_jxl: bool) -> Response {
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
         let program_text_for_payload = program_text.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            render_to_payload(&program_text, size, encode_preview_webp)
+            render_to_payload(&program_text, size, want_jxl, encode_preview_webp)
         });
         if let Ok(image) = handle.await {
             send_item(
@@ -485,16 +525,24 @@ fn stream_single(program_text: String, size: u32) -> Response {
         .unwrap()
 }
 
-fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> Response {
+fn stream_response(
+    prog: ImageProgram,
+    size: u32,
+    mutations: Vec<Mutation>,
+    want_jxl: bool,
+) -> Response {
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(64);
 
     tokio::spawn(async move {
         let mutation_count = mutations.len();
+        // In JXL mode the browser decodes natively, so we decode natively too
+        // (the `size` downscale only governs the WebP fallback path).
+        let decode_size = if want_jxl { 0 } else { size };
 
         let prog_orig = prog.clone();
         let orig_handle = tokio::task::spawn_blocking(move || {
             let program_text = prog_orig.to_text();
-            let image = render_to_payload(&program_text, size, encode_preview_webp);
+            let image = render_to_payload(&program_text, size, want_jxl, encode_preview_webp);
             (program_text, image)
         });
 
@@ -511,8 +559,8 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
                         let (label, text, image) = loop {
                             let mutated = current.apply(&p);
                             let text = mutated.to_text();
-                            match render_roundtrip(&text, size) {
-                                Ok((rgba, w, h, jxl_size)) => {
+                            match render_roundtrip(&text, decode_size) {
+                                Ok((rgba, w, h, jxl)) => {
                                     // For compound mutations, retry with a fresh random compound
                                     // if the result is degenerate (flat / solid colour).
                                     if compound && is_degenerate(&rgba) && retries < MAX_RETRIES {
@@ -523,7 +571,14 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
                                     break (
                                         current.label(),
                                         text,
-                                        to_payload(&rgba, w, h, jxl_size, encode_preview_webp),
+                                        to_payload(
+                                            &rgba,
+                                            w,
+                                            h,
+                                            &jxl,
+                                            want_jxl,
+                                            encode_preview_webp,
+                                        ),
                                     );
                                 }
                                 Err(_) => {
@@ -578,19 +633,37 @@ fn stream_response(prog: ImageProgram, size: u32, mutations: Vec<Mutation>) -> R
 
 // ── Payload builder ───────────────────────────────────────────────────────────
 
+/// Build a payload from a rendered frame. `jxl` is the encoded JXL the frame
+/// was decoded from (empty for the synthetic placeholder); its length is
+/// always reported as `jxl_size`. When `want_jxl` the JXL bytes ride along
+/// base64'd in `jxl_b64` and the WebP encode is skipped; otherwise we encode
+/// `rgba` to WebP via `encoder` as before.
 fn to_payload(
     rgba: &[u8],
     width: u32,
     height: u32,
-    jxl_size: u64,
+    jxl: &[u8],
+    want_jxl: bool,
     encoder: WebpEncoder,
 ) -> ImagePayload {
-    let webp = encoder(rgba, width, height);
-    ImagePayload {
-        webp_b64: base64::engine::general_purpose::STANDARD.encode(&webp),
-        width,
-        height,
-        jxl_size,
+    let jxl_size = jxl.len() as u64;
+    if want_jxl {
+        ImagePayload {
+            webp_b64: None,
+            jxl_b64: Some(base64::engine::general_purpose::STANDARD.encode(jxl)),
+            width,
+            height,
+            jxl_size,
+        }
+    } else {
+        let webp = encoder(rgba, width, height);
+        ImagePayload {
+            webp_b64: Some(base64::engine::general_purpose::STANDARD.encode(&webp)),
+            jxl_b64: None,
+            width,
+            height,
+            jxl_size,
+        }
     }
 }
 
@@ -611,7 +684,7 @@ fn unsupported_placeholder() -> ImagePayload {
             rgba[idx + 3] = 255;
         }
     }
-    to_payload(&rgba, W, H, 0, encode_preview_webp)
+    to_payload(&rgba, W, H, &[], false, encode_preview_webp)
 }
 
 /// VP8L lossless WebP encoder for preview payloads (used for
