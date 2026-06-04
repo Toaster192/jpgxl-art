@@ -285,15 +285,10 @@ async fn prerender_gallery() {
     let mut tasks = stream::iter(entries.into_iter().enumerate())
         .map(|(index, e)| async move {
             tokio::task::spawn_blocking(move || {
-                let size = if e.size == 0 {
-                    GALLERY_MAX_DIM
-                } else {
-                    e.size.min(GALLERY_MAX_DIM)
-                };
                 let t0 = std::time::Instant::now();
                 let image = render_to_payload_logged(
                     e.program_text,
-                    size,
+                    GALLERY_MAX_DIM,
                     false,
                     encode_gallery_webp,
                     Some(e.name),

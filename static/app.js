@@ -1277,14 +1277,18 @@ function addSectionHeader(container, text) {
 
 // ── Download helpers ──────────────────────────────────────────────────────────
 
+// Trigger a browser download of `blob` under `filename`, cleaning up the
+// temporary object URL once the click is dispatched.
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function downloadPng(canvas, label) {
-  canvas.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = slugify(label) + '.png';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }, 'image/png');
+  canvas.toBlob(blob => triggerDownload(blob, slugify(label) + '.png'), 'image/png');
 }
 
 async function downloadJxl(programText, label) {
@@ -1294,12 +1298,7 @@ async function downloadJxl(programText, label) {
     body: JSON.stringify({ program_text: programText }),
   });
   if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-  const blob = await res.blob();
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = slugify(label) + '.jxl';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  triggerDownload(await res.blob(), slugify(label) + '.jxl');
 }
 
 function fmtBytes(n) {
