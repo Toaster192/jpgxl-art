@@ -1,23 +1,12 @@
-use std::io::Read;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
-
 use image::imageops::FilterType;
-use rand::Rng;
+
+use crate::proc;
 
 /// The libjxl decoder, built and bundled alongside `jxl_from_tree` by
 /// `make setup` (RPATH `$ORIGIN/lib`). We decode with libjxl rather than a
 /// pure-Rust decoder so output matches the reference editors exactly —
 /// jxl-oxide rendered XYB / XYB+Squeeze images differently.
 const DJXL_BIN: &str = "./djxl";
-
-fn decode_timeout() -> Duration {
-    let secs = std::env::var("RENDER_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(30);
-    Duration::from_secs(secs)
-}
 
 /// Decode a JXL byte stream into RGBA8, optionally resized so the longest
 /// edge matches `max_dim`. `max_dim == 0` means native dimensions.
@@ -47,70 +36,7 @@ pub fn decode_jxl(bytes: &[u8], max_dim: u32) -> Result<(Vec<u8>, u32, u32), Str
 /// Shell out to `./djxl` to decode `bytes` to a PAM, parsed back to RGBA8 at
 /// native resolution. Single-threaded — we parallelise at the render level.
 fn decode_via_djxl(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
-    if !std::path::Path::new(DJXL_BIN).exists() {
-        return Err("djxl binary not found. Run 'make setup' to build it.".to_string());
-    }
-
-    let id: u64 = rand::thread_rng().gen();
-    let tmp = std::env::temp_dir();
-    let input_path = tmp.join(format!("artxl_dec_{}.jxl", id));
-    let output_path = tmp.join(format!("artxl_dec_{}.pam", id));
-
-    std::fs::write(&input_path, bytes).map_err(|e| format!("write temp jxl: {}", e))?;
-
-    let mut child = Command::new(DJXL_BIN)
-        .arg("--num_threads=1")
-        .arg(&input_path)
-        .arg(&output_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&input_path);
-            format!("launch djxl: {}", e)
-        })?;
-
-    let timeout = decode_timeout();
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = std::fs::remove_file(&input_path);
-                    let _ = std::fs::remove_file(&output_path);
-                    return Err(format!("djxl timed out after {}s", timeout.as_secs()));
-                }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            Err(e) => {
-                let _ = std::fs::remove_file(&input_path);
-                let _ = std::fs::remove_file(&output_path);
-                return Err(format!("djxl wait: {}", e));
-            }
-        }
-    };
-
-    let _ = std::fs::remove_file(&input_path);
-
-    if !status.success() {
-        let _ = std::fs::remove_file(&output_path);
-        let mut stderr = String::new();
-        if let Some(mut s) = child.stderr.take() {
-            let _ = s.read_to_string(&mut stderr);
-        }
-        let stderr = stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!("djxl exited with {}", status)
-        } else {
-            format!("djxl exited with {}: {}", status, stderr)
-        });
-    }
-
-    let pam = std::fs::read(&output_path).map_err(|e| format!("read pam: {}", e))?;
-    let _ = std::fs::remove_file(&output_path);
+    let pam = proc::run_with_temp_files(DJXL_BIN, &["--num_threads=1"], bytes, "jxl", "pam")?;
     parse_pam(&pam)
 }
 
