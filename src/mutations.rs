@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rand::Rng;
 use serde::Serialize;
 
@@ -97,7 +99,7 @@ pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> Image
     }
     let channels = if alpha { 4 } else { 3 };
 
-    // Orientation 5/6/7/8 transpose width↔height on decode (jxl-oxide applies
+    // Orientation 5/6/7/8 transpose width↔height on decode (libjxl applies
     // EXIF orientation), so a requested "wide" canvas would otherwise display
     // tall half the time. Pick it up front so explicit dims can compensate.
     let orientation = rng.gen_range(1u32..=8);
@@ -151,7 +153,7 @@ pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> Image
     } else {
         1
     };
-    let root = Node::If {
+    let mut root = Node::If {
         condition: Condition {
             var: Var::C,
             op: Op::Gt,
@@ -160,6 +162,8 @@ pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> Image
         on_true: Box::new(random_node(&mut rng, 1, probs, &ctx)),
         on_false: Box::new(random_node(&mut rng, 1, probs, &ctx)),
     };
+    // Strip dead nested same-property comparisons libjxl's djxl can't decode.
+    simplify_degenerate(&mut root);
 
     ImageProgram {
         width,
@@ -438,7 +442,18 @@ impl Mutation {
         if let Mutation::Chain(steps) = self {
             return steps.iter().fold(program.clone(), |p, m| m.apply(&p));
         }
+        let mut prog = self.apply_one(program);
+        // Strip any dead nested same-property comparison the mutation may have
+        // created (SwapConditionVar / AddBranch / InsertIfAtLeaf / SwapSubtrees
+        // can all produce one) — djxl can't decode those. Runs on every path,
+        // including the early returns inside apply_one.
+        simplify_degenerate(&mut prog.root);
+        prog
+    }
 
+    /// Apply a single (non-`Chain`) mutation and return the raw result. The
+    /// `apply` wrapper simplifies afterwards.
+    fn apply_one(&self, program: &ImageProgram) -> ImageProgram {
         let mut rng = rand::thread_rng();
         let mut prog = program.clone();
         // Value/threshold ranges for any freshly-generated nodes match the
@@ -712,6 +727,69 @@ impl Mutation {
     }
 }
 
+// ── Dead-condition simplification ───────────────────────────────────────────
+
+/// Collapse conditions that are always-true or always-false given the ancestor
+/// conditions on the **same property** along the path. libjxl's `djxl` decoder
+/// rejects a JXL whose MA tree contains such a degenerate nested comparison
+/// (e.g. `W > 18` with a nested `W > 16`, or `c > 1` inside `c > 1`) — even
+/// though `jxl_from_tree` happily encodes it and jxl-oxide used to decode it.
+/// Removing the dead branch never changes the rendered image (it was
+/// unreachable), and it leaves genuinely-narrowing nests (`c > 0` → `c > 1`)
+/// intact. Applied to every generated and mutated program before it's encoded.
+pub(crate) fn simplify_degenerate(node: &mut Node) {
+    // bounds: per-property inclusive [low, high] the value is constrained to by
+    // ancestors on this path. `prop > t` ⇒ true branch low = t+1, false high = t.
+    fn rec(node: &mut Node, bounds: &mut HashMap<String, (i64, i64)>) {
+        let taken = std::mem::replace(node, Node::Predict(Predictor::Set(0)));
+        match taken {
+            Node::If {
+                condition,
+                mut on_true,
+                mut on_false,
+            } => {
+                let key = condition.var.label().to_string();
+                let t = condition.threshold;
+                let orig = bounds.get(&key).copied();
+                let (low, high) = orig.unwrap_or((i64::MIN, i64::MAX));
+
+                if low > t {
+                    // prop is already > t everywhere here → always true.
+                    *node = *on_true;
+                    rec(node, bounds);
+                    return;
+                }
+                if high <= t {
+                    // prop is already ≤ t everywhere here → always false.
+                    *node = *on_false;
+                    rec(node, bounds);
+                    return;
+                }
+
+                bounds.insert(key.clone(), (low.max(t.saturating_add(1)), high));
+                rec(on_true.as_mut(), bounds);
+                bounds.insert(key.clone(), (low, high.min(t)));
+                rec(on_false.as_mut(), bounds);
+                match orig {
+                    Some(v) => {
+                        bounds.insert(key, v);
+                    }
+                    None => {
+                        bounds.remove(&key);
+                    }
+                }
+                *node = Node::If {
+                    condition,
+                    on_true,
+                    on_false,
+                };
+            }
+            leaf => *node = leaf,
+        }
+    }
+    rec(node, &mut HashMap::new());
+}
+
 // ── Degenerate check ──────────────────────────────────────────────────────────
 
 pub fn is_degenerate(rgba: &[u8]) -> bool {
@@ -874,6 +952,9 @@ fn random_var(rng: &mut impl Rng) -> Var {
         let (name, _) = COMPOSITE_VARS[rng.gen_range(0..COMPOSITE_VARS.len())];
         return Var::Other(name.to_string());
     }
+    // `c` may nest (e.g. `c > 1` inside `c > 0`); `simplify_degenerate` strips
+    // only the *dead* same-property nests (like `c > 1` inside `c > 1`) that
+    // djxl can't decode, so we don't need to restrict it here.
     match rng.gen_range(0..6u8) {
         0 => Var::X,
         1 => Var::Y,

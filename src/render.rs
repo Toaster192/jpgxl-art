@@ -21,7 +21,7 @@ fn render_timeout() -> Duration {
 }
 
 /// Encode `program_text` with `./jxl_from_tree`, decode the resulting JXL
-/// bytes via `jxl-oxide`, and return the rendered RGBA8 buffer, its
+/// bytes via `./djxl`, and return the rendered RGBA8 buffer, its
 /// dimensions, and the encoded JXL byte length (so callers can surface
 /// the file size without re-invoking `jxl_from_tree`).
 ///

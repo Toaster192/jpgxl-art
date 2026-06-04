@@ -18,9 +18,9 @@ TimeoutStartSec=600
 
 Environment=RUST_LOG=info
 
-# Hardening — the app needs to exec ./jxl_from_tree and write the temp file
-# the subprocess round-trips through, so we keep /tmp writable (PrivateTmp)
-# but close everything else we can.
+# Hardening — the app needs to exec ./jxl_from_tree (encode) and ./djxl
+# (decode) and write the temp files those subprocesses round-trip through, so
+# we keep /tmp writable (PrivateTmp) but close everything else we can.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

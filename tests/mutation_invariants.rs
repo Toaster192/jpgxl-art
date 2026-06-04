@@ -1,5 +1,6 @@
-use artxl::mutations::{random_compounds, Mutation};
+use artxl::mutations::{random_compounds, random_program, Complexity, Mutation};
 use artxl::tree::{ImageProgram, Node, Op};
+use std::collections::HashMap;
 use std::panic;
 
 fn seed_programs() -> Vec<(String, ImageProgram)> {
@@ -145,6 +146,90 @@ fn random_compounds_preserve_invariants() {
     assert!(
         failures.is_empty(),
         "random compound invariant failures:\n{}",
+        failures.join("\n"),
+    );
+}
+
+/// Walk the tree tracking each property's [low, high] bound from ancestor
+/// conditions on the same property; return Err on any condition that is
+/// always-true or always-false (a "dead" nested same-property comparison).
+/// libjxl's djxl decoder rejects a JXL containing one, so `simplify_degenerate`
+/// must have removed them from every generated/mutated program.
+fn assert_no_dead(node: &Node, bounds: &mut HashMap<String, (i64, i64)>) -> Result<(), String> {
+    if let Node::If {
+        condition,
+        on_true,
+        on_false,
+    } = node
+    {
+        let key = condition.var.label().to_string();
+        let t = condition.threshold;
+        let orig = bounds.get(&key).copied();
+        let (low, high) = orig.unwrap_or((i64::MIN, i64::MAX));
+        if low > t {
+            return Err(format!("always-true `{} > {}` (low={})", key, t, low));
+        }
+        if high <= t {
+            return Err(format!("always-false `{} > {}` (high={})", key, t, high));
+        }
+        bounds.insert(key.clone(), (low.max(t.saturating_add(1)), high));
+        assert_no_dead(on_true, bounds)?;
+        bounds.insert(key.clone(), (low, high.min(t)));
+        assert_no_dead(on_false, bounds)?;
+        match orig {
+            Some(v) => {
+                bounds.insert(key, v);
+            }
+            None => {
+                bounds.remove(&key);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Generated programs (and seed programs after a mutation) must contain no dead
+/// nested same-property conditions — those make a JXL djxl can't decode.
+#[test]
+fn no_dead_conditions_after_generation_or_mutation() {
+    let mut failures = Vec::new();
+
+    for complexity in [Complexity::Simple, Complexity::Normal, Complexity::Complex] {
+        for dims in [None, Some((1024, 576)), Some((576, 1024))] {
+            for trial in 0..60 {
+                let prog = random_program(complexity, dims);
+                if let Err(e) = assert_no_dead(&prog.root, &mut HashMap::new()) {
+                    failures.push(format!(
+                        "gen {:?} dims={:?} trial {}: {}\n{}",
+                        complexity,
+                        dims,
+                        trial,
+                        e,
+                        prog.to_text()
+                    ));
+                }
+            }
+        }
+    }
+
+    // Mutations call simplify_degenerate too, so their output must be clean
+    // regardless of the seed.
+    let seeds = seed_programs();
+    let mut muts = Mutation::showcase();
+    muts.extend(random_compounds(20));
+    for m in &muts {
+        for (name, baseline) in &seeds {
+            let out = m.apply(baseline);
+            if let Err(e) = assert_no_dead(&out.root, &mut HashMap::new()) {
+                failures.push(format!("mut {} on {}: {}", m.label(), name, e));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "dead conditions found ({}):\n{}",
+        failures.len(),
         failures.join("\n"),
     );
 }

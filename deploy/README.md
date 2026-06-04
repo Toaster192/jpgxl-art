@@ -100,7 +100,8 @@ loud; you'd want to `ssh root@VPS journalctl -u jxlart -n 200` to see why.
 - `bootstrap.sh` — one-shot fresh-box setup. Idempotent.
 - `jxlart.service` — systemd unit, installed to `/etc/systemd/system/`. Runs
   the binary as `jxlart`, sandboxed (`ProtectSystem=full`, `PrivateTmp`, etc.)
-  but keeps the subprocess access to `./jxl_from_tree` working.
+  but keeps the subprocess access to `./jxl_from_tree` (encode) and `./djxl`
+  (decode) working.
 
 ## Operational notes
 

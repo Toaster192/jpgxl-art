@@ -6,8 +6,10 @@ memory/*
 
 # Built by `make setup` from the libjxl source tree.
 /jxl_from_tree
+/djxl
 /lib/
 
-# Scratch / temp render files written by encode_jxl_from_tree.
+# Scratch / temp render files written by encode_jxl_from_tree / djxl decode.
 *.xl
 *.jxl
+*.pam

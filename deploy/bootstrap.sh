@@ -56,8 +56,9 @@ else
   sudo -u "$APP_USER" git -C "$APP_DIR" pull --ff-only
 fi
 
-echo "==> build jxl_from_tree (make setup) and release binary"
-# make setup clones libjxl v0.11.2 and builds it; expect ~5-10min on first run.
+echo "==> build jxl_from_tree + djxl (make setup) and release binary"
+# make setup clones libjxl v0.11.2 and builds both the encoder (jxl_from_tree)
+# and decoder (djxl); expect ~5-10min on first run.
 sudo -u "$APP_USER" bash -lc "
   set -euo pipefail
   cd '$APP_DIR'

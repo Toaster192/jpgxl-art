@@ -14,7 +14,6 @@ webp = "0.3"
 base64 = { version = "0.22", features = ["std"] }
 rand = "0.8"
 futures = "0.3"
-jxl-oxide = "0.12"
 
 [profile.release]
 opt-level = 3

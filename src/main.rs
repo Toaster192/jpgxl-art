@@ -595,7 +595,7 @@ fn to_payload(
 }
 
 /// Dark-grey diagonally-striped 256×256 placeholder used when the roundtrip
-/// render fails (e.g. `jxl_from_tree` rejects the program or `jxl-oxide` can't
+/// render fails (e.g. `jxl_from_tree` rejects the program or `djxl` can't
 /// decode its output). Visually distinct from any real render.
 fn unsupported_placeholder() -> ImagePayload {
     const W: u32 = 256;

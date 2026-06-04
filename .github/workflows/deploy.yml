@@ -20,6 +20,12 @@ jobs:
             set -euo pipefail
             cd /opt/jxlart
             git pull origin main
+            # Ensure the libjxl tools exist (jxl_from_tree encoder + djxl
+            # decoder). Idempotent — a no-op once both are built; only the
+            # first run after djxl was introduced does the ~5-10 min libjxl
+            # build. (Recommended: run `make setup` on the box once before the
+            # first deploy of this change so this step stays fast.)
+            make setup
             # Build first; if this fails, the running service stays on the
             # last good binary instead of being restarted into nothing.
             ~/.cargo/bin/cargo build --release

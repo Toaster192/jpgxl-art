@@ -1,6 +1,6 @@
 // Gallery encode round-trip: every gallery file → jxl_from_tree → JXL bytes
-// → jxl-oxide decode → RGBA. Gated with #[ignore] because it shells out 222
-// times and needs ./jxl_from_tree built. Run with:
+// → djxl decode → RGBA. Gated with #[ignore] because it shells out 222
+// times and needs ./jxl_from_tree + ./djxl built. Run with:
 //
 //     cargo test --test gallery_encode -- --ignored --nocapture
 //

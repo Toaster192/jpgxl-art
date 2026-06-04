@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Build jxl_from_tree from the libjxl source tree and place:
-#   - the binary at ./jxl_from_tree (project root)
-#   - its runtime .so files (libjxl_threads, libjxl_cms) in ./lib/
-# The binary's RPATH is patched to $ORIGIN/lib so it is self-contained
-# relative to the project root — no system-wide install needed.
+# Build jxl_from_tree (encoder) and djxl (decoder) from the libjxl source tree
+# and place:
+#   - the binaries at ./jxl_from_tree and ./djxl (project root)
+#   - their runtime libjxl .so files (libjxl, libjxl_threads, libjxl_cms) in ./lib/
+# Each binary's RPATH is patched to $ORIGIN/lib so they're self-contained
+# relative to the project root — no system-wide install needed. The server
+# encodes with jxl_from_tree and decodes with djxl (libjxl, so output matches
+# the reference editors exactly).
 #
 # Uses system highway + brotli + lcms2 when available, so no git
 # submodule downloads are required.
 #
 # Usage: ./scripts/build_jxl_from_tree.sh [<dest>]
-#   <dest>  where to write the binary (default: ./jxl_from_tree).
-#           Bundled .so files go into <dest's directory>/lib/.
+#   <dest>  where to write the jxl_from_tree binary (default: ./jxl_from_tree);
+#           djxl is written next to it. Bundled .so files go into <dir>/lib/.
 #
 # Override the libjxl revision with `LIBJXL_REV=<sha> …`.
 
@@ -102,7 +105,7 @@ cmake -S "$TMP_SRC" -B "$TMP_BUILD" \
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-echo "Building jxl_from_tree (using $NPROC cores)..."
+echo "Building libjxl tools — jxl_from_tree + djxl (using $NPROC cores)..."
 cmake --build "$TMP_BUILD" --parallel "$NPROC"
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -114,17 +117,22 @@ cmake --build "$TMP_BUILD" --parallel "$NPROC"
 # self-contained relative to the project root, which is exactly the CWD the
 # Rust server invokes it from.
 
-cp "$TMP_BUILD/tools/jxl_from_tree" "$DEST"
-chmod +x "$DEST"
-
 LIB_DEST="$(dirname "$DEST")/lib"
 mkdir -p "$LIB_DEST"
-# `cp -P` preserves the SONAME symlink chain
-# (libjxl_threads.so → .so.0 → .so.0.12.x).
-cp -P "$TMP_BUILD"/lib/libjxl_threads.so* "$LIB_DEST/"
-cp -P "$TMP_BUILD"/lib/libjxl_cms.so*     "$LIB_DEST/"
+# Bundle every libjxl-owned shared lib (`cp -P` preserves the SONAME symlink
+# chain, e.g. libjxl.so → .so.0 → .so.0.11.2). jxl_from_tree needs threads+cms;
+# djxl additionally links the main libjxl. highway/brotli/lcms2 stay system
+# libs, resolved from /usr/lib at runtime.
+cp -P "$TMP_BUILD"/lib/libjxl*.so* "$LIB_DEST/"
 
+DJXL_DEST="$(dirname "$DEST")/djxl"
 # Single-quoted: $ORIGIN is an ld.so token — must reach the linker literally.
-patchelf --set-rpath '$ORIGIN/lib' "$DEST"
+for bin_src_dst in "tools/jxl_from_tree:$DEST" "tools/djxl:$DJXL_DEST"; do
+    src="${bin_src_dst%%:*}"
+    dst="${bin_src_dst##*:}"
+    cp "$TMP_BUILD/$src" "$dst"
+    chmod +x "$dst"
+    patchelf --set-rpath '$ORIGIN/lib' "$dst"
+done
 
-echo "Done: $DEST ($(wc -c < "$DEST" | tr -d ' ') bytes), libs in $LIB_DEST"
+echo "Done: $DEST + $DJXL_DEST, libs in $LIB_DEST"
