@@ -103,7 +103,7 @@ pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> Image
     // EXIF orientation), so a requested "wide" canvas would otherwise display
     // tall half the time. Pick it up front so explicit dims can compensate.
     let orientation = rng.gen_range(1u32..=8);
-    let transposes = matches!(orientation, 5 | 6 | 7 | 8);
+    let transposes = matches!(orientation, 5..=8);
 
     // Dimensions. An explicit canvas (size×aspect) is the requested *display*
     // shape — pre-swap it when the orientation transposes so the rendered card
@@ -629,8 +629,7 @@ impl Mutation {
                 // Mid-mutation subtree generation always uses the Normal
                 // curve — the user's chosen complexity only governs the
                 // initial random program, not subsequent mutations.
-                let replacement =
-                    random_node(&mut rng, 1, Complexity::Normal.branch_probs(), &ctx);
+                let replacement = random_node(&mut rng, 1, Complexity::Normal.branch_probs(), &ctx);
                 replace_nth_node(&mut prog.root, n, &mut 0, &mut |_| replacement.clone());
             }
             Mutation::CycleRct => {
@@ -814,7 +813,7 @@ pub fn is_degenerate(rgba: &[u8]) -> bool {
     let range = (mx_r - mn_r) as u16 + (mx_g - mn_g) as u16 + (mx_b - mn_b) as u16;
     // Non-alpha images decode to alpha=255 everywhere, so this only trips for
     // alpha-mode programs whose plane renders (near-)fully transparent.
-    let mean_alpha = if count > 0 { alpha_sum / count } else { 0 };
+    let mean_alpha = alpha_sum.checked_div(count).unwrap_or(0);
     range < 10 || mean_alpha < 8
 }
 
@@ -876,7 +875,9 @@ impl VarClass {
         match self {
             // Coord/Channel are normally intercepted by random_threshold_for;
             // these are safe fallbacks.
-            VarClass::Coord => rng.gen_range((ctx.width as i64 / 20)..=(ctx.width as i64 * 19 / 20).max(1)),
+            VarClass::Coord => {
+                rng.gen_range((ctx.width as i64 / 20)..=(ctx.width as i64 * 19 / 20).max(1))
+            }
             VarClass::Channel => rng.gen_range(0i64..=(ctx.channels as i64 - 1).max(0)),
             VarClass::Small => rng.gen_range(0i64..=3),
             VarClass::Neighbor => rng.gen_range((-2 * m / 5)..=(6 * m / 5)),

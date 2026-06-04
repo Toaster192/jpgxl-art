@@ -38,13 +38,18 @@ fn mean_rgb(rgba: &[u8]) -> (f64, f64, f64) {
         g += px[1] as u64;
         b += px[2] as u64;
     }
-    (r as f64 / n as f64, g as f64 / n as f64, b as f64 / n as f64)
+    (
+        r as f64 / n as f64,
+        g as f64 / n as f64,
+        b as f64 / n as f64,
+    )
 }
 
 #[test]
 #[ignore]
 fn decode_roundtrip_bench() {
-    if !std::path::Path::new("./jxl_from_tree").exists() || !std::path::Path::new("./djxl").exists() {
+    if !std::path::Path::new("./jxl_from_tree").exists() || !std::path::Path::new("./djxl").exists()
+    {
         eprintln!("SKIP: ./jxl_from_tree and ./djxl required — run `make setup`");
         return;
     }
@@ -81,7 +86,12 @@ fn decode_roundtrip_bench() {
         let (dm, dmin) = mean_min(&dec);
         println!(
             "{:<14} {:>6.2} {:>8.1} {:>9.1}/{:<5.1} {:>10.1}",
-            name, mp, enc_ms, dm, dmin, enc_ms + dm
+            name,
+            mp,
+            enc_ms,
+            dm,
+            dmin,
+            enc_ms + dm
         );
     }
 

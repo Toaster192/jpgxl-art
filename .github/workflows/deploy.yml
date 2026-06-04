@@ -31,12 +31,22 @@ jobs:
             ~/.cargo/bin/cargo build --release
             sudo systemctl restart jxlart
             # Startup pre-renders the gallery before the listener binds
-            # (~4 min on the deploy box), so poll for up to 6 minutes
-            # before giving up.
+            # (~minutes on the deploy box), so poll for up to 6 minutes before
+            # giving up. Surface the pre-render progress ("[N/226] …") the
+            # service logs to journald so this wait isn't a silent black box —
+            # `systemctl status` is already permitted by the deploy sudoers.
+            last=""
             for _ in $(seq 1 72); do
               if curl -fsS --max-time 5 http://localhost:3000/api/generate >/dev/null 2>&1; then
                 echo "Service responsive"
                 exit 0
+              fi
+              prog=$(sudo systemctl status jxlart 2>/dev/null \
+                | grep -oE 'Pre-rendering gallery \([0-9]+ entries\)|\[[0-9]+/[0-9]+\].*' \
+                | tail -1 || true)
+              if [ -n "$prog" ] && [ "$prog" != "$last" ]; then
+                echo "  $prog"
+                last="$prog"
               fi
               sleep 5
             done

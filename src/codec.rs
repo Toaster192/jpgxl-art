@@ -138,9 +138,19 @@ fn parse_pam(b: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     while let Some(tok) = it.next() {
         match tok {
             "WIDTH" => w = it.next().and_then(|v| v.parse().ok()).ok_or("PAM: WIDTH")?,
-            "HEIGHT" => h = it.next().and_then(|v| v.parse().ok()).ok_or("PAM: HEIGHT")?,
+            "HEIGHT" => {
+                h = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .ok_or("PAM: HEIGHT")?
+            }
             "DEPTH" => depth = it.next().and_then(|v| v.parse().ok()).ok_or("PAM: DEPTH")?,
-            "MAXVAL" => maxval = it.next().and_then(|v| v.parse().ok()).ok_or("PAM: MAXVAL")?,
+            "MAXVAL" => {
+                maxval = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .ok_or("PAM: MAXVAL")?
+            }
             // Keep only the first TUPLTYPE (the colour layout); later ones are
             // "Optional" extra-channel markers.
             "TUPLTYPE" => {
