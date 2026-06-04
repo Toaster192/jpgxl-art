@@ -377,7 +377,10 @@ impl Mutation {
                 format!("Threshold {:+}%", (scale * 100.0).round() as i64)
             }
             Mutation::JitterThresholds { scale } => {
-                format!("Jitter thresholds ±{}%", (scale.abs() * 100.0).round() as i64)
+                format!(
+                    "Jitter thresholds ±{}%",
+                    (scale.abs() * 100.0).round() as i64
+                )
             }
             Mutation::NegateThreshold => "Negate threshold".into(),
             Mutation::SwapConditionVar => "Swap cond var".into(),

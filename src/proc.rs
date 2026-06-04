@@ -47,7 +47,9 @@ pub fn run_with_temp_files(
     out_ext: &str,
 ) -> Result<Vec<u8>, String> {
     if !std::path::Path::new(bin).exists() {
-        return Err(format!("{bin} binary not found. Run 'make setup' to build it."));
+        return Err(format!(
+            "{bin} binary not found. Run 'make setup' to build it."
+        ));
     }
 
     let id: u64 = rand::thread_rng().gen();
