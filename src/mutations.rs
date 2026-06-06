@@ -484,32 +484,34 @@ impl Mutation {
         }
         // `AddFrame` restructures the whole program (it appends a frame), so it
         // runs on the program as-is. Every other non-Chain mutation edits one
-        // frame's tree or the global header; in a multi-frame (`NotLast`)
-        // program a tree edit targets a random frame, applied by swapping that
-        // frame into the `root` slot around `apply_one` (which only ever touches
-        // `prog.root`) and swapping back — the 41 tree operations need no
-        // changes, and the global-header mutations (which ignore `root`) are
-        // unaffected. Single-frame programs always pick 0.
+        // frame's tree or the global header.
         let mut prog = if matches!(self, Mutation::AddFrame) {
             self.apply_one(program)
         } else {
+            // In a multi-frame (`NotLast`) program, prefer a frame the mutation
+            // can actually change: trivial leaf-only frames (e.g. a bare
+            // `- Weighted + 5` overlay) are no-ops for condition-based mutations
+            // and would otherwise produce dead, identical gallery cards. We try
+            // every frame (cheap — no rendering, just tree ops via `apply_one`)
+            // and pick uniformly among the results that differ from the input,
+            // falling back to frame 0 when nothing is affectable. Single-frame
+            // programs run exactly one candidate, so behaviour is unchanged.
             let n_frames = 1 + program.extra_frames.len();
-            let target = if n_frames > 1 {
-                rand::thread_rng().gen_range(0..n_frames)
+            let mut effective: Vec<ImageProgram> = Vec::new();
+            let mut fallback: Option<ImageProgram> = None;
+            for target in 0..n_frames {
+                let candidate = self.apply_at_frame(program, target);
+                if candidate != *program {
+                    effective.push(candidate);
+                } else if fallback.is_none() {
+                    fallback = Some(candidate);
+                }
+            }
+            if effective.is_empty() {
+                fallback.unwrap_or_else(|| program.clone())
             } else {
-                0
-            };
-            if target == 0 {
-                self.apply_one(program)
-            } else {
-                let mut swapped = program.clone();
-                std::mem::swap(
-                    &mut swapped.root,
-                    &mut swapped.extra_frames[target - 1].root,
-                );
-                let mut out = self.apply_one(&swapped);
-                std::mem::swap(&mut out.root, &mut out.extra_frames[target - 1].root);
-                out
+                let pick = rand::thread_rng().gen_range(0..effective.len());
+                effective.swap_remove(pick)
             }
         };
 
@@ -522,6 +524,26 @@ impl Mutation {
             simplify_degenerate(&mut frame.root);
         }
         prog
+    }
+
+    /// Apply a single tree/header mutation to a chosen frame's tree. `apply_one`
+    /// only ever touches `prog.root`, so for `target > 0` we swap that frame's
+    /// tree into the `root` slot around it and swap back — the per-frame tree
+    /// ops need no changes, and global-header mutations (which ignore `root`)
+    /// are unaffected by the swap.
+    fn apply_at_frame(&self, program: &ImageProgram, target: usize) -> ImageProgram {
+        if target == 0 {
+            self.apply_one(program)
+        } else {
+            let mut swapped = program.clone();
+            std::mem::swap(
+                &mut swapped.root,
+                &mut swapped.extra_frames[target - 1].root,
+            );
+            let mut out = self.apply_one(&swapped);
+            std::mem::swap(&mut out.root, &mut out.extra_frames[target - 1].root);
+            out
+        }
     }
 
     /// Apply a single (non-`Chain`) mutation and return the raw result. The
