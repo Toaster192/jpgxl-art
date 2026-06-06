@@ -133,6 +133,22 @@ pub enum Node {
 
 // ── Image program ─────────────────────────────────────────────────────────────
 
+/// One extra frame in a multi-frame (`NotLast`) program. The first frame lives
+/// directly on `ImageProgram` (its global header + `root`); every subsequent
+/// frame is a `Frame` carrying its own verbatim header directives and tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Frame {
+    /// This frame's header directive lines, verbatim and in source order
+    /// (e.g. `"RCT 0"`, `"FramePos -662 -100"`). Later frames' directives are
+    /// passed through unmodelled — we only structure frame 0's global header.
+    #[serde(default)]
+    pub extra_headers: Vec<String>,
+    /// Verbatim `Spline … EndSpline` blocks for this frame.
+    #[serde(default)]
+    pub splines: Vec<String>,
+    pub root: Node,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageProgram {
     pub width: u32,
@@ -151,6 +167,10 @@ pub struct ImageProgram {
     #[serde(default)]
     pub splines: Vec<String>,
     pub root: Node,
+    /// Frames after the first, for multi-frame (`NotLast`) programs. Empty for
+    /// the common single-frame case.
+    #[serde(default)]
+    pub extra_frames: Vec<Frame>,
 }
 
 impl ImageProgram {
@@ -189,6 +209,23 @@ impl ImageProgram {
             out.push('\n');
         }
         write_node(&mut out, &self.root, 0);
+        // Subsequent frames: their own verbatim header block, then their tree.
+        for frame in &self.extra_frames {
+            out.push('\n');
+            for h in &frame.extra_headers {
+                out.push_str(h);
+                out.push('\n');
+            }
+            out.push('\n');
+            for s in &frame.splines {
+                out.push_str(s);
+                if !s.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
+            write_node(&mut out, &frame.root, 0);
+        }
         out
     }
 }
@@ -258,13 +295,14 @@ impl ImageProgram {
         let mut extra_headers: Vec<String> = Vec::new();
         let mut splines: Vec<String> = Vec::new();
 
-        // Header phase: walk all lines until the first body-starter (`if` or
-        // `-`). Blank lines and `Spline … EndSpline` blocks can be interleaved
-        // with header directives, so we don't stop at the first blank.
+        // Frame 0 header phase: walk all lines until the first body-starter
+        // (`if` or `-`). Blank lines and `Spline … EndSpline` blocks can be
+        // interleaved with header directives, so we don't stop at the first
+        // blank. `i` is left pointing at the first body line.
         let mut i = 0;
-        let body_start = loop {
+        loop {
             if i >= lines.len() {
-                break i;
+                break;
             }
             let trimmed = lines[i].trim();
             if trimmed.is_empty() {
@@ -273,7 +311,7 @@ impl ImageProgram {
             }
             let first_tok = trimmed.split_whitespace().next().unwrap_or("");
             if first_tok == "if" || first_tok == "-" {
-                break i;
+                break;
             }
             if first_tok == "Spline" {
                 let mut block: Vec<&str> = vec![lines[i]];
@@ -313,19 +351,37 @@ impl ImageProgram {
             i += 1;
         };
 
-        // Body phase: tokenise everything from `body_start` onwards and walk
-        // the tree.
-        let tokens: Vec<&str> = lines[body_start..]
-            .iter()
-            .flat_map(|l| l.split_whitespace())
-            .collect();
+        // Frame 0 body: parse exactly one tree, advancing `i` past it.
+        let root = parse_tree_advancing(&lines, &mut i)?;
 
-        if tokens.is_empty() {
-            return Err("program has no tree body".to_string());
+        // Additional frames are governed by `NotLast`, exactly like
+        // jxl_from_tree: a frame is followed by another iff its header carries a
+        // `NotLast` directive. Anything after the final (non-`NotLast`) frame is
+        // ignored — the default program, for instance, has a dead trailing
+        // `if W > 73` fragment that jxl_from_tree silently drops.
+        let mut extra_frames: Vec<Frame> = Vec::new();
+        let mut prev_not_last = header_has_notlast(&extra_headers);
+        while prev_not_last {
+            // Skip blanks between frames.
+            while i < lines.len() && lines[i].trim().is_empty() {
+                i += 1;
+            }
+            if i >= lines.len() {
+                // `NotLast` promised a following frame that isn't there.
+                return Err("NotLast frame is missing its following frame".to_string());
+            }
+            let (fheaders, fsplines) = parse_frame_header(&lines, &mut i)?;
+            if i >= lines.len() {
+                return Err("frame header with no tree body".to_string());
+            }
+            let froot = parse_tree_advancing(&lines, &mut i)?;
+            prev_not_last = header_has_notlast(&fheaders);
+            extra_frames.push(Frame {
+                extra_headers: fheaders,
+                splines: fsplines,
+                root: froot,
+            });
         }
-
-        let mut pos = 0usize;
-        let root = parse_node(&tokens, &mut pos)?;
 
         Ok(ImageProgram {
             width,
@@ -337,8 +393,94 @@ impl ImageProgram {
             extra_headers,
             splines,
             root,
+            extra_frames,
         })
     }
+}
+
+/// Tokenise the body from line `*i` onward, parse exactly one complete tree, and
+/// advance `*i` to the line of the next unconsumed token (or past the end). A
+/// strict binary tree consumes exactly its own tokens, so for a well-formed
+/// multi-frame program this stops precisely at the next frame's first line.
+fn parse_tree_advancing(lines: &[&str], i: &mut usize) -> Result<Node, String> {
+    let mut tokens: Vec<&str> = Vec::new();
+    let mut token_line: Vec<usize> = Vec::new();
+    for (off, line) in lines[*i..].iter().enumerate() {
+        for tok in line.split_whitespace() {
+            tokens.push(tok);
+            token_line.push(*i + off);
+        }
+    }
+    if tokens.is_empty() {
+        return Err("program has no tree body".to_string());
+    }
+    let mut pos = 0usize;
+    let root = parse_node(&tokens, &mut pos)?;
+    *i = if pos < tokens.len() {
+        token_line[pos]
+    } else {
+        lines.len()
+    };
+    Ok(root)
+}
+
+/// Collect one (non-first) frame's header block — verbatim directive lines and
+/// `Spline` blocks — starting at line `*i`, stopping at the first body-starter
+/// (`if`/`-`) line or end of input. Unlike frame 0, later frames keep every
+/// directive (including `RCT`/`Width` overrides) verbatim; we only require they
+/// be recognised so genuinely malformed input still errors.
+fn parse_frame_header(lines: &[&str], i: &mut usize) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut extra_headers: Vec<String> = Vec::new();
+    let mut splines: Vec<String> = Vec::new();
+    while *i < lines.len() {
+        let trimmed = lines[*i].trim();
+        if trimmed.is_empty() {
+            *i += 1;
+            continue;
+        }
+        let key = trimmed.split_whitespace().next().unwrap_or("");
+        if key == "if" || key == "-" {
+            break;
+        }
+        if key == "Spline" {
+            let mut block: Vec<&str> = vec![lines[*i]];
+            *i += 1;
+            while *i < lines.len() {
+                let cur = lines[*i];
+                block.push(cur);
+                let has_end = cur.split_whitespace().any(|t| t == "EndSpline");
+                *i += 1;
+                if has_end {
+                    break;
+                }
+            }
+            splines.push(block.join("\n"));
+            continue;
+        }
+        if !is_recognised_header_key(key) {
+            return Err(format!("unknown directive '{}' in frame header", key));
+        }
+        extra_headers.push(trimmed.split_whitespace().collect::<Vec<_>>().join(" "));
+        *i += 1;
+    }
+    Ok((extra_headers, splines))
+}
+
+/// Whether a frame's header directive lines include a `NotLast` (meaning another
+/// frame follows it).
+fn header_has_notlast(headers: &[String]) -> bool {
+    headers
+        .iter()
+        .any(|h| h.split_whitespace().next() == Some("NotLast"))
+}
+
+/// Header keys jxl-art recognises: the structured globals plus the pass-through
+/// `EXTRA_HEADER_KEYS`.
+fn is_recognised_header_key(k: &str) -> bool {
+    matches!(
+        k,
+        "Bitdepth" | "Width" | "Height" | "Channels" | "Orientation" | "RCT"
+    ) || EXTRA_HEADER_KEYS.contains(&k)
 }
 
 /// Remove every `/* … */` block. Unterminated comments are kept verbatim so

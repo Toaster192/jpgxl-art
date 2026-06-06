@@ -4,7 +4,7 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::render;
-use crate::tree::{Condition, ImageProgram, Node, Op, Predictor, Var};
+use crate::tree::{Condition, Frame, ImageProgram, Node, Op, Predictor, Var};
 
 // ── Random program generation ─────────────────────────────────────────────────
 
@@ -67,6 +67,17 @@ fn random_headers(rng: &mut impl Rng) -> Vec<String> {
 /// Remove every `extra_headers` line whose first token is `key`.
 fn remove_header(headers: &mut Vec<String>, key: &str) {
     headers.retain(|h| h.split_whitespace().next() != Some(key));
+}
+
+/// Append a bare directive line (`key`) unless a directive with that key is
+/// already present.
+fn push_header_if_absent(headers: &mut Vec<String>, key: &str) {
+    if !headers
+        .iter()
+        .any(|h| h.split_whitespace().next() == Some(key))
+    {
+        headers.push(key.to_string());
+    }
 }
 
 /// Curated bitdepths for the random generator. 8 is weighted (appears twice);
@@ -175,6 +186,7 @@ pub fn random_program(complexity: Complexity, dims: Option<(u32, u32)>) -> Image
         extra_headers,
         splines: Vec::new(),
         root,
+        extra_frames: Vec::new(),
     }
 }
 
@@ -316,6 +328,13 @@ pub enum Mutation {
     SwapWidthHeight,
     /// Add/remove an `Alpha` plane (transparency).
     ToggleAlpha,
+    // ── Multi-frame (`NotLast`) ───────────────────────────────────────────────
+    /// Append a new `NotLast` overlay frame: marks the current last frame
+    /// `NotLast` and stacks a fresh frame on top that paints a flat-colour
+    /// rectangle through the alpha plane (opaque inside a random region,
+    /// transparent elsewhere) so the frame below shows through. Ensures the
+    /// image carries `Alpha` so the overlay composites instead of replacing.
+    AddFrame,
     // ── Exotic predictor (newly-reachable via the tolerant parser) ────────────
     /// Replace a random Predict leaf with an exotic predictor:
     /// NE / NW / NN / WW / NWW / AvgW+N / AvgAll / Gradient / Select.
@@ -412,6 +431,7 @@ impl Mutation {
             Mutation::CycleBitdepth => "Cycle bitdepth".into(),
             Mutation::SwapWidthHeight => "Swap W↔H".into(),
             Mutation::ToggleAlpha => "Toggle alpha".into(),
+            Mutation::AddFrame => "Add overlay frame".into(),
             Mutation::Chain(ms) => ms.iter().map(|m| m.label()).collect::<Vec<_>>().join(" → "),
         }
     }
@@ -453,6 +473,8 @@ impl Mutation {
             CycleUpsample,
             CycleBitdepth,
             ToggleAlpha,
+            // ── Multi-frame ───────────────────────────────────────────────────
+            AddFrame,
         ]
     }
 
@@ -460,12 +482,42 @@ impl Mutation {
         if let Mutation::Chain(steps) = self {
             return steps.iter().fold(program.clone(), |p, m| m.apply(&p));
         }
-        let mut prog = self.apply_one(program);
+        // `AddFrame` restructures the whole program (it appends a frame), so it
+        // runs on the program as-is. Every other non-Chain mutation edits one
+        // frame's tree or the global header; in a multi-frame (`NotLast`)
+        // program a tree edit targets a random frame, applied by swapping that
+        // frame into the `root` slot around `apply_one` (which only ever touches
+        // `prog.root`) and swapping back — the 41 tree operations need no
+        // changes, and the global-header mutations (which ignore `root`) are
+        // unaffected. Single-frame programs always pick 0.
+        let mut prog = if matches!(self, Mutation::AddFrame) {
+            self.apply_one(program)
+        } else {
+            let n_frames = 1 + program.extra_frames.len();
+            let target = if n_frames > 1 {
+                rand::thread_rng().gen_range(0..n_frames)
+            } else {
+                0
+            };
+            if target == 0 {
+                self.apply_one(program)
+            } else {
+                let mut swapped = program.clone();
+                std::mem::swap(&mut swapped.root, &mut swapped.extra_frames[target - 1].root);
+                let mut out = self.apply_one(&swapped);
+                std::mem::swap(&mut out.root, &mut out.extra_frames[target - 1].root);
+                out
+            }
+        };
+
         // Strip any dead nested same-property comparison the mutation may have
         // created (SwapConditionVar / AddBranch / InsertIfAtLeaf / SwapSubtrees
-        // can all produce one) — djxl can't decode those. Runs on every path,
-        // including the early returns inside apply_one.
+        // can all produce one) — djxl can't decode those. Runs on every frame's
+        // tree, covering the early returns inside apply_one too.
         simplify_degenerate(&mut prog.root);
+        for frame in &mut prog.extra_frames {
+            simplify_degenerate(&mut frame.root);
+        }
         prog
     }
 
@@ -783,6 +835,63 @@ impl Mutation {
                 let n = rng.gen_range(0..n_preds);
                 let replacement = random_exotic_predictor(&mut rng);
                 apply_nth_predictor(&mut prog.root, n, &mut 0, &mut |p| *p = replacement.clone());
+            }
+            Mutation::AddFrame => {
+                // 1. The overlay blends via the alpha plane, so the image needs
+                //    `Alpha` (mutually exclusive with `Upsample`).
+                if !prog
+                    .extra_headers
+                    .iter()
+                    .any(|h| h.split_whitespace().next() == Some("Alpha"))
+                {
+                    remove_header(&mut prog.extra_headers, "Upsample");
+                    push_header_if_absent(&mut prog.extra_headers, "Alpha");
+                }
+                // 2. Mark the current last frame `NotLast` so our frame follows.
+                match prog.extra_frames.last_mut() {
+                    Some(f) => push_header_if_absent(&mut f.extra_headers, "NotLast"),
+                    None => push_header_if_absent(&mut prog.extra_headers, "NotLast"),
+                }
+                // 3. Build the overlay tree against a context that now sees Alpha.
+                let octx = GenCtx::from_program(&prog);
+                let rx = rng.gen_range(0..octx.width.max(2)) as i64;
+                let ry = rng.gen_range(0..octx.height.max(2)) as i64;
+                let colour = rng.gen_range(0..=octx.value_max);
+                // `c > channels-2` selects the last (alpha) channel: c > 2 of 4.
+                let alpha_split = octx.channels.saturating_sub(2) as i64;
+                let region = Node::If {
+                    condition: Condition {
+                        var: Var::X,
+                        op: Op::Gt,
+                        threshold: rx,
+                    },
+                    on_true: Box::new(Node::If {
+                        condition: Condition {
+                            var: Var::Y,
+                            op: Op::Gt,
+                            threshold: ry,
+                        },
+                        on_true: Box::new(Node::Predict(Predictor::Set(octx.value_max))), // opaque
+                        on_false: Box::new(Node::Predict(Predictor::Set(0))),             // clear
+                    }),
+                    on_false: Box::new(Node::Predict(Predictor::Set(0))), // clear
+                };
+                let overlay = Node::If {
+                    condition: Condition {
+                        var: Var::C,
+                        op: Op::Gt,
+                        threshold: alpha_split,
+                    },
+                    on_true: Box::new(region),                                  // alpha channel
+                    on_false: Box::new(Node::Predict(Predictor::Set(colour))),  // colour channels
+                };
+                prog.extra_frames.push(Frame {
+                    // `RCT 0` (like the gallery logo overlay) so the flat colour
+                    // is direct RGB rather than transformed by the global RCT.
+                    extra_headers: vec!["RCT 0".to_string()],
+                    splines: Vec::new(),
+                    root: overlay,
+                });
             }
             Mutation::Chain(_) => unreachable!(),
         }
