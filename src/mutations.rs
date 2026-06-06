@@ -503,7 +503,10 @@ impl Mutation {
                 self.apply_one(program)
             } else {
                 let mut swapped = program.clone();
-                std::mem::swap(&mut swapped.root, &mut swapped.extra_frames[target - 1].root);
+                std::mem::swap(
+                    &mut swapped.root,
+                    &mut swapped.extra_frames[target - 1].root,
+                );
                 let mut out = self.apply_one(&swapped);
                 std::mem::swap(&mut out.root, &mut out.extra_frames[target - 1].root);
                 out
@@ -882,8 +885,8 @@ impl Mutation {
                         op: Op::Gt,
                         threshold: alpha_split,
                     },
-                    on_true: Box::new(region),                                  // alpha channel
-                    on_false: Box::new(Node::Predict(Predictor::Set(colour))),  // colour channels
+                    on_true: Box::new(region), // alpha channel
+                    on_false: Box::new(Node::Predict(Predictor::Set(colour))), // colour channels
                 };
                 prog.extra_frames.push(Frame {
                     // `RCT 0` (like the gallery logo overlay) so the flat colour

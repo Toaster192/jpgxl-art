@@ -349,7 +349,7 @@ impl ImageProgram {
                 other => return Err(format!("unknown directive '{}' in header", other)),
             }
             i += 1;
-        };
+        }
 
         // Frame 0 body: parse exactly one tree, advancing `i` past it.
         let root = parse_tree_advancing(&lines, &mut i)?;
