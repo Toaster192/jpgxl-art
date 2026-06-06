@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Pre-commit hook: runs the fast subset of CI (rustfmt + clippy + test) so
+# commits that would fail CI are caught locally. The release build is left to
+# CI — clippy already compiles everything and catches the same errors.
+#
+# Installed via: git config core.hooksPath .githooks
+# Skip a single commit with: git commit --no-verify
+set -euo pipefail
+
+echo "pre-commit: cargo fmt --check"
+cargo fmt --check
+
+echo "pre-commit: cargo clippy --all-targets -- -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-commit: cargo test"
+cargo test
+
+echo "pre-commit: all checks passed"

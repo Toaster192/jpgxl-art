@@ -21,6 +21,7 @@ setup:
 	else \
 		./scripts/build_jxl_from_tree.sh $(JXL_BIN); \
 	fi
+	@git config core.hooksPath .githooks && echo "Installed pre-commit hook (core.hooksPath = .githooks)."
 	@echo ""
 	@echo "Setup complete.  Start the server with:  make run"
 
