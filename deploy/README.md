@@ -103,6 +103,30 @@ loud; you'd want to `ssh root@VPS journalctl -u jxlart -n 200` to see why.
   but keeps the subprocess access to `./jxl_from_tree` (encode) and `./djxl`
   (decode) working.
 
+## Publish to Discord (optional)
+
+The card `⋯` menu has a **Publish to Discord** action that POSTs a PNG preview
++ metadata to a Discord webhook. The server reads the webhook URL from the
+`DISCORD_WEBHOOK_URL` env var; if it's unset the endpoint returns 503 and the
+feature is effectively off.
+
+The unit loads it from `EnvironmentFile=-/etc/jxlart/secrets.env` (the leading
+`-` makes the file optional). To enable on the VPS:
+
+```sh
+sudo mkdir -p /etc/jxlart
+echo 'DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/XXX/YYY' \
+  | sudo tee /etc/jxlart/secrets.env >/dev/null
+sudo chmod 600 /etc/jxlart/secrets.env
+sudo chown jxlart:jxlart /etc/jxlart/secrets.env
+sudo systemctl restart jxlart
+```
+
+Create the webhook in Discord under the target channel → Edit Channel →
+Integrations → Webhooks. Keep the URL out of the repo. Locally, just
+`export DISCORD_WEBHOOK_URL=...` before `cargo run`. A small global rate limit
+(5 posts / 60s) guards the channel.
+
 ## Operational notes
 
 - **Logs.** `journalctl -u jxlart -f` for live tail; `journalctl -u

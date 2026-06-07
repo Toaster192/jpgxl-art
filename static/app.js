@@ -1223,6 +1223,13 @@ function renderCard(container, label, payload, isOriginal, programText, warning,
     });
   }
 
+  if (programText) {
+    addMenuItem('📤 Publish to Discord', () => {
+      menu.classList.remove('open');
+      openPublishDialog(programText ?? programEl.value, label, canvas);
+    });
+  }
+
   if (zcodeSupported && programText) {
     addMenuItem('🔗 Copy share link', async (item) => {
       const orig = item.textContent;
@@ -1289,6 +1296,106 @@ function triggerDownload(blob, filename) {
 
 function downloadPng(canvas, label) {
   canvas.toBlob(blob => triggerDownload(blob, slugify(label) + '.png'), 'image/png');
+}
+
+// ── Publish to Discord ────────────────────────────────────────────────────────
+
+// Lazily-built modal collecting Title + Artist, then POSTs to the server which
+// relays a PNG preview + metadata to the JPEG XL Discord webhook.
+let publishModal = null;
+function buildPublishModal() {
+  const modal = document.createElement('div');
+  modal.id = 'publish-modal';
+  modal.innerHTML = `
+    <div id="publish-card">
+      <div id="publish-head">
+        <h3>Publish to Discord</h3>
+        <button id="publish-close" title="Close">✕</button>
+      </div>
+      <div id="publish-body">
+        <p class="publish-note">Posts your piece (PNG preview + source link) to the
+          <code>#jxl-art</code> channel on the JPEG XL Discord.</p>
+        <img id="publish-preview" alt="preview" />
+        <label class="publish-field">Title
+          <input type="text" id="publish-title" maxlength="120" />
+        </label>
+        <label class="publish-field">Artist
+          <input type="text" id="publish-artist" maxlength="80" />
+        </label>
+        <div id="publish-status"></div>
+        <div id="publish-actions">
+          <button id="publish-cancel" class="dl-btn">Cancel</button>
+          <button id="publish-go" class="dl-btn primary">Publish</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.classList.remove('open');
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#publish-close').addEventListener('click', close);
+  modal.querySelector('#publish-cancel').addEventListener('click', close);
+  return modal;
+}
+
+function openPublishDialog(programText, label, canvas) {
+  if (!publishModal) publishModal = buildPublishModal();
+  const m = publishModal;
+  const titleEl = m.querySelector('#publish-title');
+  const artistEl = m.querySelector('#publish-artist');
+  const statusEl = m.querySelector('#publish-status');
+  const goBtn = m.querySelector('#publish-go');
+  const previewEl = m.querySelector('#publish-preview');
+
+  titleEl.value = localStorage.getItem('artxl:publishTitle') || label || 'Unnamed piece';
+  artistEl.value = localStorage.getItem('artxl:publishArtist') || 'Anonymous';
+  statusEl.textContent = '';
+  statusEl.className = '';
+  goBtn.disabled = false;
+  goBtn.textContent = 'Publish';
+  try { previewEl.src = canvas.toDataURL('image/png'); } catch { previewEl.removeAttribute('src'); }
+
+  goBtn.onclick = async () => {
+    goBtn.disabled = true;
+    goBtn.textContent = '⏳ Publishing…';
+    statusEl.textContent = '';
+    statusEl.className = '';
+    try {
+      await publishToDiscord(programText, titleEl.value, artistEl.value);
+      localStorage.setItem('artxl:publishTitle', titleEl.value);
+      localStorage.setItem('artxl:publishArtist', artistEl.value);
+      statusEl.textContent = '✓ Published to #jxl-art';
+      statusEl.className = 'ok';
+      setTimeout(() => m.classList.remove('open'), 1100);
+    } catch (e) {
+      statusEl.textContent = '⚠ ' + (e.message || 'Publish failed');
+      statusEl.className = 'err';
+      goBtn.disabled = false;
+      goBtn.textContent = 'Publish';
+    }
+  };
+
+  m.classList.add('open');
+  titleEl.focus();
+  titleEl.select();
+}
+
+async function publishToDiscord(programText, title, artist) {
+  let sourceUrl = '';
+  if (zcodeSupported) {
+    try {
+      const url = new URL(location.href);
+      url.search = '';
+      url.hash = '';
+      url.searchParams.set('zcode', await encodeZcode(programText));
+      sourceUrl = url.toString();
+    } catch { /* link is optional */ }
+  }
+  const res = await fetch('/api/publish/discord', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ program_text: programText, title, artist, source_url: sourceUrl }),
+  });
+  if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
 }
 
 async function downloadJxl(programText, label) {

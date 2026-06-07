@@ -13,9 +13,11 @@ use axum::{
 use base64::Engine;
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tower_http::services::ServeDir;
 
 /// Longest-edge cap applied to gallery thumbnails. Cards render at
@@ -126,6 +128,21 @@ struct RenderRequest {
     /// ship raw JXL instead of WebP. Ignored if absent (defaults to false).
     #[serde(default)]
     jxl: bool,
+}
+
+#[derive(Deserialize)]
+struct PublishRequest {
+    program_text: String,
+    /// Display title; empty → "Unnamed piece".
+    #[serde(default)]
+    title: String,
+    /// Author credit; empty → "Anonymous".
+    #[serde(default)]
+    artist: String,
+    /// `?zcode=` share link back to the editor, built by the frontend (it owns
+    /// the zcode/deflate encoding) and embedded verbatim in the Discord message.
+    #[serde(default)]
+    source_url: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -445,6 +462,153 @@ async fn download_jxl(
         .unwrap())
 }
 
+// ── Publish to Discord ──────────────────────────────────────────────────────
+
+/// Global token-bucket-ish throttle for `/api/publish/discord`: at most
+/// `PUBLISH_RATE_LIMIT` posts within `PUBLISH_RATE_WINDOW`. The channel is
+/// shared, so a single global limit (not per-IP) is what protects it.
+const PUBLISH_RATE_LIMIT: usize = 5;
+const PUBLISH_RATE_WINDOW: Duration = Duration::from_secs(60);
+
+static PUBLISH_LIMITER: OnceLock<Mutex<VecDeque<Instant>>> = OnceLock::new();
+
+/// Record one publish attempt; return false if it would exceed the limit.
+fn publish_rate_ok() -> bool {
+    let lock = PUBLISH_LIMITER.get_or_init(|| Mutex::new(VecDeque::new()));
+    let mut hits = lock.lock().unwrap();
+    let now = Instant::now();
+    while let Some(&front) = hits.front() {
+        if now.duration_since(front) > PUBLISH_RATE_WINDOW {
+            hits.pop_front();
+        } else {
+            break;
+        }
+    }
+    if hits.len() >= PUBLISH_RATE_LIMIT {
+        return false;
+    }
+    hits.push_back(now);
+    true
+}
+
+/// Render the program, then POST a PNG preview + metadata to the Discord
+/// webhook in `DISCORD_WEBHOOK_URL`. The whole message is webhook content —
+/// there is no bot. Mirrors the jxl-art publish format.
+async fn publish_discord(
+    Json(req): Json<PublishRequest>,
+) -> Result<Response, (StatusCode, String)> {
+    let webhook = std::env::var("DISCORD_WEBHOOK_URL").map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "publishing is not configured on this server".to_string(),
+        )
+    })?;
+
+    if !publish_rate_ok() {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many publishes right now — try again in a minute".to_string(),
+        ));
+    }
+
+    // Render natively (size 0) → RGBA for the PNG preview + JXL for the size line.
+    let text = req.program_text;
+    let (png, jxl_len) = tokio::task::spawn_blocking(move || {
+        let (rgba, w, h, jxl) = render::render_roundtrip(&text, 0)?;
+        let png = encode_png(rgba, w, h)?;
+        Ok::<_, String>((png, jxl.len()))
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    let artist = {
+        let t = req.artist.trim();
+        if t.is_empty() {
+            "Anonymous"
+        } else {
+            t
+        }
+    };
+    let title = {
+        let t = req.title.trim();
+        if t.is_empty() {
+            "Unnamed piece"
+        } else {
+            t
+        }
+    };
+    let year = current_year();
+    let mut content =
+        format!("**{artist}**\n_\u{201c}{title}\u{201d}_\n{year}\nimage/jxl\n{jxl_len} bytes\n");
+    if !req.source_url.trim().is_empty() {
+        content.push_str(&format!(
+            "\n[source tree on jxl-art.toaster.work]({})",
+            req.source_url.trim()
+        ));
+    }
+
+    let part = reqwest::multipart::Part::bytes(png)
+        .file_name("art.png")
+        .mime_str("image/png")
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let form = reqwest::multipart::Form::new()
+        .text(
+            "payload_json",
+            serde_json::json!({ "content": content }).to_string(),
+        )
+        .part("file", part);
+
+    let resp = reqwest::Client::new()
+        .post(&webhook)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("discord request failed: {e}"),
+            )
+        })?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("discord rejected the post ({status}): {body}"),
+        ));
+    }
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"ok":true}"#))
+        .unwrap())
+}
+
+/// Current Gregorian year (UTC), computed from the system clock without
+/// pulling in a date crate.
+fn current_year() -> i64 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let days = secs / 86_400;
+    // Civil-from-days (Howard Hinnant's algorithm), then take the year.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    if mp >= 10 {
+        y + 1
+    } else {
+        y
+    }
+}
+
 // ── Streaming response ────────────────────────────────────────────────────────
 
 type WebpEncoder = fn(&[u8], u32, u32) -> Vec<u8>;
@@ -742,6 +906,7 @@ fn main() {
             .route("/api/render", post(render))
             .route("/api/download/png", post(download_png))
             .route("/api/download/jxl", post(download_jxl))
+            .route("/api/publish/discord", post(publish_discord))
             .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
             .fallback_service(ServeDir::new("static"));
 

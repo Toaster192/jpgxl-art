@@ -18,6 +18,11 @@ TimeoutStartSec=600
 
 Environment=RUST_LOG=info
 
+# Optional secrets (leading "-" → not an error if the file is absent). Put the
+# Discord webhook here so the "Publish to Discord" feature works without baking
+# the URL into the repo:  DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+EnvironmentFile=-/etc/jxlart/secrets.env
+
 # Hardening — the app needs to exec ./jxl_from_tree (encode) and ./djxl
 # (decode) and write the temp files those subprocesses round-trip through, so
 # we keep /tmp writable (PrivateTmp) but close everything else we can.
