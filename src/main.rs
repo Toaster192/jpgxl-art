@@ -543,7 +543,7 @@ async fn publish_discord(
         format!("**{artist}**\n_\u{201c}{title}\u{201d}_\n{year}\nimage/jxl\n{jxl_len} bytes\n");
     if !req.source_url.trim().is_empty() {
         content.push_str(&format!(
-            "\n[source tree on jxl-art.toaster.work]({})",
+            "\n[source tree on jxl-art.toaster.work](<{}>)",
             req.source_url.trim()
         ));
     }
